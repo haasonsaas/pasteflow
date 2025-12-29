@@ -232,6 +232,13 @@
         font-size: 11px;
         color: var(--muted);
       }
+      .warning-list {
+        font-size: 11px;
+        color: #9c2d1f;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
       .hotkey-list,
       .rule-editor-list {
         display: flex;
@@ -294,6 +301,26 @@
       }
       #configDraftError {
         color: #9c2d1f;
+        font-size: 12px;
+      }
+      #recentList {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .history-item {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 6px 8px;
+        background: #fffaf0;
+        font-size: 11px;
+        color: var(--muted);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .history-item strong {
+        color: var(--ink);
         font-size: 12px;
       }
       #actions {
@@ -373,6 +400,10 @@
         <div class="rule-line" id="ruleInfoMatch"></div>
         <div class="rule-tags" id="ruleInfoTags"></div>
       </section>
+      <section class="pane" id="recentPanel">
+        <h3>Recent</h3>
+        <div id="recentList"></div>
+      </section>
       <section class="pane" id="diff">
         <h3>Diff</h3>
         <pre id="diffText"></pre>
@@ -384,6 +415,7 @@
       <div class="config-section">
         <strong>Hotkeys</strong>
         <div class="config-note">Changes apply immediately.</div>
+        <div class="warning-list" id="hotkeyWarnings"></div>
         <div class="config-row">
           <span>Global hotkey</span>
           <input class="config-input" id="hotkeyCombo" placeholder="Cmd+Shift+V" />
@@ -433,6 +465,7 @@
         configError: null,
         configDraftError: null,
         configDiff: null,
+        history: [],
       };
 
       let searchQuery = "";
@@ -453,6 +486,8 @@
       const configDiff = document.getElementById("configDiff");
       const configDraftError = document.getElementById("configDraftError");
       const configRevertBtn = document.getElementById("configRevert");
+      const hotkeyWarnings = document.getElementById("hotkeyWarnings");
+      const recentList = document.getElementById("recentList");
 
       function visibleRules() {
         const list = searchQuery.trim()
@@ -460,6 +495,12 @@
               rule.name.toLowerCase().includes(searchQuery) || rule.id.toLowerCase().includes(searchQuery)
             )
           : state.suggestions;
+        if (searchQuery.trim()) {
+          list.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.name.localeCompare(b.name);
+          });
+        }
         return list.slice(0, searchQuery ? 10 : list.length);
       }
 
@@ -611,6 +652,14 @@
         };
 
         hotkeyList.innerHTML = "";
+        hotkeyWarnings.innerHTML = "";
+        if (state.config.hotkey_warnings && state.config.hotkey_warnings.length) {
+          state.config.hotkey_warnings.forEach((warning) => {
+            const line = document.createElement("div");
+            line.textContent = warning;
+            hotkeyWarnings.appendChild(line);
+          });
+        }
         (state.config.hotkey_apps || []).forEach((entry) => {
           const row = document.createElement("div");
           row.className = "hotkey-item";
@@ -700,6 +749,7 @@
         renderRules();
         renderMeta();
         renderRuleInfo();
+        renderHistory();
         const beforeEl = document.getElementById("before");
         const afterEl = document.getElementById("after");
         const diffEl = document.getElementById("diffText");
@@ -730,6 +780,31 @@
         renderConfig();
       }
 
+      function renderHistory() {
+        recentList.innerHTML = "";
+        if (!state.history || !state.history.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = "No recent actions yet.";
+          recentList.appendChild(empty);
+          return;
+        }
+        state.history.forEach((item) => {
+          const card = document.createElement("div");
+          card.className = "history-item";
+          const title = document.createElement("strong");
+          title.textContent = `${item.action} · ${item.rule}`;
+          const meta = document.createElement("div");
+          meta.textContent = item.time;
+          const snippet = document.createElement("div");
+          snippet.textContent = item.snippet;
+          card.appendChild(title);
+          card.appendChild(meta);
+          card.appendChild(snippet);
+          recentList.appendChild(card);
+        });
+      }
+
       window.__SET_STATE__ = (next) => {
         state.suggestions = next.suggestions || [];
         state.allRules = next.all_rules || [];
@@ -740,6 +815,7 @@
         state.activeApp = next.active_app || null;
         state.contentTypes = next.content_types || [];
         state.config = next.config || state.config;
+        state.history = next.history || state.history || [];
         state.configDraftError = next.config_draft_error || null;
         state.configDiff = next.config_diff || null;
         configDirty = !!(state.configDiff && state.configDiff.trim().length);

@@ -40,6 +40,13 @@ Set `pinned = true` on any rule to keep it at the top of suggestions (when it ma
 ## Per-app hotkeys
 You can register additional hotkeys per app. Changes apply immediately.
 
+## Config editor upgrades
+- Live TOML validation with diff preview + Revert.
+- Hotkey conflict warnings are surfaced in the panel.
+
+## Activity log
+The Recent panel shows the last 5 Paste/Copy actions with the rule used and a snippet.
+
 ## Notes
 - Pasteflow simulates `Cmd+V` after copying the transformed text; macOS may prompt for Accessibility permission.
 - LLM rules are supported in config but are off by default and require explicit per-rule opt-in.

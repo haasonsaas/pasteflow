@@ -10,6 +10,7 @@ use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Local, Utc};
 use std::collections::HashMap;
 use std::error::Error;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
@@ -45,6 +46,8 @@ struct AppState {
     hotkey_manager: GlobalHotKeyManager,
     registered_hotkeys: Vec<HotKey>,
     hotkey_map: HashMap<u32, HotkeyRule>,
+    hotkey_warnings: Vec<String>,
+    history: Vec<HistoryItem>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +76,7 @@ struct UiRule {
     auto_accept: bool,
     uses_remote: bool,
     pinned: bool,
+    score: i32,
     detail: String,
     match_hint: String,
 }
@@ -93,6 +97,7 @@ struct UiState {
     config_error: Option<String>,
     config_draft_error: Option<String>,
     config_diff: Option<String>,
+    history: Vec<UiHistoryItem>,
 }
 
 #[derive(Debug, Serialize)]
@@ -100,6 +105,7 @@ struct UiConfigState {
     hotkey_combo: String,
     hotkey_apps: Vec<UiHotkeyApp>,
     rules: Vec<UiRuleConfig>,
+    hotkey_warnings: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,6 +120,14 @@ struct UiRuleConfig {
     name: String,
     description: String,
     pinned: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct UiHistoryItem {
+    time: String,
+    action: String,
+    rule: String,
+    snippet: String,
 }
 
 struct TrayHandle {
@@ -131,6 +145,18 @@ struct HotkeyRule {
 struct HotkeySpec {
     combo: String,
     app: Option<String>,
+}
+
+struct HotkeyEntry {
+    hotkey: HotKey,
+    combos: Vec<String>,
+}
+
+struct HistoryItem {
+    time: DateTime<Utc>,
+    action: String,
+    rule: String,
+    snippet: String,
 }
 
 #[derive(Debug)]
@@ -168,6 +194,8 @@ pub fn run() -> AppResult<()> {
         hotkey_manager,
         registered_hotkeys: Vec::new(),
         hotkey_map: HashMap::new(),
+        hotkey_warnings: Vec::new(),
+        history: Vec::new(),
     };
 
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
@@ -541,13 +569,22 @@ fn selected_rule(state: &AppState) -> Option<&Rule> {
 }
 
 fn send_state(state: &AppState, webview: &WebView) {
+    let ctx = current_match_context(state);
     let suggestions: Vec<UiRule> = state
         .suggestions
         .iter()
-        .map(|suggestion| ui_rule(&suggestion.rule))
+        .map(|suggestion| ui_rule_with_score(&suggestion.rule, suggestion.score))
         .collect();
 
-    let all_rules: Vec<UiRule> = state.cfg.rules.iter().map(ui_rule).collect();
+    let all_rules: Vec<UiRule> = state
+        .cfg
+        .rules
+        .iter()
+        .map(|rule| {
+            let score = rule_score(rule, &ctx);
+            ui_rule_with_score(rule, score)
+        })
+        .collect();
 
     let content_types = state
         .panel
@@ -566,11 +603,16 @@ fn send_state(state: &AppState, webview: &WebView) {
         active_app: state.panel.active_app.clone(),
         content_types,
         search_query: state.panel.search_query.clone(),
-        config: build_ui_config_state(&state.cfg),
+        config: {
+            let mut cfg = build_ui_config_state(&state.cfg);
+            cfg.hotkey_warnings = state.hotkey_warnings.clone();
+            cfg
+        },
         config_text: state.config_text.clone(),
         config_error: state.config_error.clone(),
         config_draft_error: state.config_draft_error.clone(),
         config_diff: state.config_diff.clone(),
+        history: state.history.iter().map(ui_history_item).collect(),
     };
 
     if let Ok(payload) = serde_json::to_string(&ui_state) {
@@ -606,19 +648,56 @@ fn build_ui_config_state(cfg: &config::Config) -> UiConfigState {
         hotkey_combo: cfg.hotkey.combo.clone(),
         hotkey_apps,
         rules,
+        hotkey_warnings: Vec::new(),
     }
 }
 
 fn apply_copy(state: &mut AppState) {
-    let _ = state.clipboard.set_text(state.panel.output.clone());
+    apply_copy_internal(state, "Copy");
 }
 
 fn apply_paste(state: &mut AppState) {
-    apply_copy(state);
+    apply_copy_internal(state, "Paste");
     let mut enigo = Enigo::new();
     enigo.key_down(Key::Meta);
     enigo.key_click(Key::Layout('v'));
     enigo.key_up(Key::Meta);
+}
+
+fn apply_copy_internal(state: &mut AppState, action: &str) {
+    let _ = state.clipboard.set_text(state.panel.output.clone());
+    record_history(state, action);
+}
+
+fn record_history(state: &mut AppState, action: &str) {
+    let rule_name = selected_rule(state)
+        .map(|rule| rule.name.clone())
+        .unwrap_or_else(|| "No rule".to_string());
+    let snippet = snippet_text(&state.panel.output);
+    state.history.insert(
+        0,
+        HistoryItem {
+            time: Utc::now(),
+            action: action.to_string(),
+            rule: rule_name,
+            snippet,
+        },
+    );
+    if state.history.len() > 5 {
+        state.history.truncate(5);
+    }
+}
+
+fn snippet_text(text: &str) -> String {
+    let mut cleaned = text.replace('\n', " ").replace('\r', " ");
+    while cleaned.contains("  ") {
+        cleaned = cleaned.replace("  ", " ");
+    }
+    if cleaned.len() > 80 {
+        cleaned.truncate(77);
+        cleaned.push_str("...");
+    }
+    cleaned
 }
 
 fn content_type_label(content_type: &crate::detect::ContentType) -> String {
@@ -631,13 +710,14 @@ fn content_type_label(content_type: &crate::detect::ContentType) -> String {
     }
 }
 
-fn ui_rule(rule: &Rule) -> UiRule {
+fn ui_rule_with_score(rule: &Rule, score: i32) -> UiRule {
     UiRule {
         id: rule.id.clone(),
         name: rule.name.clone(),
         auto_accept: rule.auto_accept,
         uses_remote: rule.llm.is_some(),
         pinned: rule.pinned,
+        score,
         detail: rule_detail(rule),
         match_hint: rule_match_hint(rule),
     }
@@ -701,6 +781,27 @@ fn transform_label(kind: TransformKind) -> &'static str {
     }
 }
 
+fn current_match_context(state: &AppState) -> MatchContext {
+    MatchContext {
+        text: state.panel.input.clone(),
+        content_types: state.panel.content_types.clone(),
+        active_app: state.panel.active_app.clone(),
+    }
+}
+
+fn rule_score(rule: &Rule, ctx: &MatchContext) -> i32 {
+    rule.matches(ctx).unwrap_or(0)
+}
+
+fn ui_history_item(item: &HistoryItem) -> UiHistoryItem {
+    UiHistoryItem {
+        time: item.time.with_timezone(&Local).format("%H:%M:%S").to_string(),
+        action: item.action.clone(),
+        rule: item.rule.clone(),
+        snippet: item.snippet.clone(),
+    }
+}
+
 fn update_ui_prefs(state: &mut AppState, search: Option<String>, selected: Option<String>) {
     let key = state.panel.active_app_key.clone();
     let entry = state.cfg.ui_state.entry(key).or_default();
@@ -759,9 +860,9 @@ fn should_handle_hotkey(state: &AppState, id: u32) -> bool {
 
 fn apply_hotkeys(state: &mut AppState) -> AppResult<()> {
     let specs = build_hotkey_specs(&state.cfg);
-    let (hotkeys, map, errors) = build_hotkeys(specs);
+    let (entries, map, mut warnings) = build_hotkeys(specs);
 
-    if hotkeys.is_empty() {
+    if entries.is_empty() {
         state.config_error = Some("No valid hotkeys registered.".to_string());
         return Err("no valid hotkeys registered".into());
     }
@@ -773,13 +874,14 @@ fn apply_hotkeys(state: &mut AppState) -> AppResult<()> {
     }
 
     let mut registered = Vec::new();
-    if state.hotkey_manager.register_all(&hotkeys).is_ok() {
-        registered = hotkeys;
-    } else {
-        for hotkey in hotkeys {
-            if state.hotkey_manager.register(hotkey).is_ok() {
-                registered.push(hotkey);
-            }
+    for entry in entries {
+        if state.hotkey_manager.register(entry.hotkey).is_ok() {
+            registered.push(entry.hotkey);
+        } else {
+            warnings.push(format!(
+                "Failed to register hotkey '{}'",
+                entry.combos.join(", ")
+            ));
         }
     }
 
@@ -790,9 +892,7 @@ fn apply_hotkeys(state: &mut AppState) -> AppResult<()> {
 
     state.registered_hotkeys = registered;
     state.hotkey_map = map;
-    if !errors.is_empty() {
-        state.config_error = Some(errors.join(" | "));
-    }
+    state.hotkey_warnings = warnings;
     Ok(())
 }
 
@@ -811,10 +911,12 @@ fn build_hotkey_specs(cfg: &config::Config) -> Vec<HotkeySpec> {
     specs
 }
 
-fn build_hotkeys(specs: Vec<HotkeySpec>) -> (Vec<HotKey>, HashMap<u32, HotkeyRule>, Vec<String>) {
+fn build_hotkeys(
+    specs: Vec<HotkeySpec>,
+) -> (Vec<HotkeyEntry>, HashMap<u32, HotkeyRule>, Vec<String>) {
     let mut hotkey_map: HashMap<u32, HotkeyRule> = HashMap::new();
-    let mut hotkeys: HashMap<u32, HotKey> = HashMap::new();
-    let mut errors = Vec::new();
+    let mut hotkeys: HashMap<u32, HotkeyEntry> = HashMap::new();
+    let mut warnings = Vec::new();
 
     for spec in specs {
         match parse_hotkey(&spec.combo) {
@@ -825,10 +927,16 @@ fn build_hotkeys(specs: Vec<HotkeySpec>) -> (Vec<HotKey>, HashMap<u32, HotkeyRul
                 } else {
                     entry.is_global = true;
                 }
-                hotkeys.entry(hotkey.id()).or_insert(hotkey);
+                hotkeys
+                    .entry(hotkey.id())
+                    .and_modify(|existing| existing.combos.push(spec.combo.clone()))
+                    .or_insert(HotkeyEntry {
+                        hotkey,
+                        combos: vec![spec.combo.clone()],
+                    });
             }
             Err(err) => {
-                errors.push(format!("Hotkey '{}': {}", spec.combo, err));
+                warnings.push(format!("Hotkey '{}': {}", spec.combo, err));
             }
         }
     }
@@ -838,7 +946,27 @@ fn build_hotkeys(specs: Vec<HotkeySpec>) -> (Vec<HotKey>, HashMap<u32, HotkeyRul
         entry.apps.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
     }
 
-    (hotkeys.into_values().collect(), hotkey_map, errors)
+    for (id, rule) in &hotkey_map {
+        if rule.is_global && !rule.apps.is_empty() {
+            if let Some(entry) = hotkeys.get(id) {
+                warnings.push(format!(
+                    "Hotkey '{}' is global and app-specific (apps: {}).",
+                    entry.combos.join(", "),
+                    rule.apps.join(", ")
+                ));
+            }
+        } else if rule.apps.len() > 1 {
+            if let Some(entry) = hotkeys.get(id) {
+                warnings.push(format!(
+                    "Hotkey '{}' is shared by apps: {}.",
+                    entry.combos.join(", "),
+                    rule.apps.join(", ")
+                ));
+            }
+        }
+    }
+
+    (hotkeys.into_values().collect(), hotkey_map, warnings)
 }
 
 fn parse_hotkey(combo: &str) -> Result<HotKey, String> {
