@@ -1,5 +1,7 @@
 # Pasteflow
 
+[![CI](https://github.com/haasonsaas/pasteflow/actions/workflows/ci.yml/badge.svg)](https://github.com/haasonsaas/pasteflow/actions/workflows/ci.yml)
+
 Rules-first paste transforms with a mandatory preview and diff. Think "prettier + jq + LLM" glued into `Cmd+Shift+V`, but deterministic by default.
 
 ## What it does (MVP)
