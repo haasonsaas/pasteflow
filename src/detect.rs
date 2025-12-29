@@ -145,4 +145,3 @@ fn parse_relative_now(input: &str) -> Option<DateTime<Utc>> {
         Some(now + chrono::Duration::seconds(seconds))
     }
 }
-

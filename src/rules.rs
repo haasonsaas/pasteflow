@@ -116,10 +116,12 @@ impl Rule {
 pub fn suggest_rules(rules: &[Rule], ctx: &MatchContext, max: usize) -> Vec<Suggestion> {
     let mut suggestions: Vec<Suggestion> = rules
         .iter()
-        .filter_map(|rule| rule.matches(ctx).map(|score| Suggestion {
-            rule: rule.clone(),
-            score,
-        }))
+        .filter_map(|rule| {
+            rule.matches(ctx).map(|score| Suggestion {
+                rule: rule.clone(),
+                score,
+            })
+        })
         .collect();
 
     suggestions.sort_by(|a, b| b.score.cmp(&a.score));

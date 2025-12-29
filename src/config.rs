@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub hotkey: HotkeyConfig,
@@ -40,17 +40,6 @@ impl Default for HotkeyConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self { suggestions: 3 }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            hotkey: HotkeyConfig::default(),
-            ui: UiConfig::default(),
-            rules: Vec::new(),
-            ui_state: HashMap::new(),
-        }
     }
 }
 

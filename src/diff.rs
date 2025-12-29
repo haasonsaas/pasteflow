@@ -7,4 +7,3 @@ pub fn unified_diff(before: &str, after: &str) -> String {
         .header("before", "after")
         .to_string()
 }
-

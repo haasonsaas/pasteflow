@@ -4,13 +4,13 @@ use crate::diff;
 use crate::rules::{MatchContext, Rule, Suggestion};
 use crate::transforms::TransformKind;
 use arboard::Clipboard;
+use chrono::{DateTime, Local, Utc};
 use enigo::{Enigo, Key, KeyboardControllable};
 use global_hotkey::{
-    hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager,
+    hotkey::{Code, HotKey, Modifiers},
 };
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Local, Utc};
 use std::collections::HashMap;
 use std::error::Error;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
@@ -253,34 +253,31 @@ pub fn run() -> AppResult<()> {
         }
     });
 
-    event_loop.run(move |event, elwt| {
-
-        match event {
-            Event::UserEvent(UserEvent::Ipc(msg)) => {
-                handle_ipc(&mut state, msg, &window, &webview);
-            }
-            Event::UserEvent(UserEvent::Menu(event)) => {
-                if event.id == tray.show_id {
-                    open_panel(&mut state, &window, &webview);
-                } else if event.id == tray.quit_id {
-                    elwt.exit();
-                }
-            }
-            Event::UserEvent(UserEvent::Hotkey(id)) => {
-                if should_handle_hotkey(&state, id) {
-                    open_panel(&mut state, &window, &webview);
-                }
-            }
-            Event::WindowEvent { event, .. } => {
-                if matches!(event, WindowEvent::CloseRequested) {
-                    window.set_visible(false);
-                }
-            }
-            Event::AboutToWait => {
-                elwt.set_control_flow(ControlFlow::Wait);
-            }
-            _ => {}
+    event_loop.run(move |event, elwt| match event {
+        Event::UserEvent(UserEvent::Ipc(msg)) => {
+            handle_ipc(&mut state, msg, &window, &webview);
         }
+        Event::UserEvent(UserEvent::Menu(event)) => {
+            if event.id == tray.show_id {
+                open_panel(&mut state, &window, &webview);
+            } else if event.id == tray.quit_id {
+                elwt.exit();
+            }
+        }
+        Event::UserEvent(UserEvent::Hotkey(id)) => {
+            if should_handle_hotkey(&state, id) {
+                open_panel(&mut state, &window, &webview);
+            }
+        }
+        Event::WindowEvent { event, .. } => {
+            if matches!(event, WindowEvent::CloseRequested) {
+                window.set_visible(false);
+            }
+        }
+        Event::AboutToWait => {
+            elwt.set_control_flow(ControlFlow::Wait);
+        }
+        _ => {}
     })?;
 
     #[allow(unreachable_code)]
@@ -355,31 +352,36 @@ fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &We
         .ui_state
         .get(&app_key)
         .and_then(|prefs| prefs.search.clone());
-    if let Some(selected) = &state.selected_rule_id {
-        if state.cfg.rules.iter().all(|rule| &rule.id != selected) {
-            state.selected_rule_id = state
-                .suggestions
-                .first()
-                .map(|suggestion| suggestion.rule.id.clone());
-            update_ui_prefs(state, None, state.selected_rule_id.clone());
-        }
+    if let Some(selected) = &state.selected_rule_id
+        && state.cfg.rules.iter().all(|rule| &rule.id != selected)
+    {
+        state.selected_rule_id = state
+            .suggestions
+            .first()
+            .map(|suggestion| suggestion.rule.id.clone());
+        update_ui_prefs(state, None, state.selected_rule_id.clone());
     }
     refresh_preview(state);
 
-    if let Some(rule) = selected_rule(state) {
-        if rule.auto_accept {
-            apply_paste(state);
-            return;
-        }
+    if let Some(rule) = selected_rule(state)
+        && rule.auto_accept
+    {
+        apply_paste(state);
+        return;
     }
 
     send_state(state, webview);
     window.set_visible(true);
-    let _ = window.request_user_attention(Some(winit::window::UserAttentionType::Informational));
-    let _ = window.focus_window();
+    window.request_user_attention(Some(winit::window::UserAttentionType::Informational));
+    window.focus_window();
 }
 
-fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Window, webview: &WebView) {
+fn handle_ipc(
+    state: &mut AppState,
+    msg: IpcMessage,
+    window: &winit::window::Window,
+    webview: &WebView,
+) {
     match msg {
         IpcMessage::Paste => {
             apply_paste(state);
@@ -443,10 +445,7 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
                 if combo_trimmed.is_empty() {
                     state.cfg.hotkey.apps.remove(&app_trimmed);
                 } else {
-                    state.cfg
-                        .hotkey
-                        .apps
-                        .insert(app_trimmed, combo_trimmed);
+                    state.cfg.hotkey.apps.insert(app_trimmed, combo_trimmed);
                 }
                 persist_config(state);
                 let _ = apply_hotkeys(state);
@@ -556,13 +555,13 @@ fn rebuild_suggestions(state: &mut AppState) {
     if let Some(prefs) = state.cfg.ui_state.get(&state.panel.active_app_key) {
         state.panel.search_query = prefs.search.clone();
     }
-    if let Some(id) = &state.selected_rule_id {
-        if state.cfg.rules.iter().all(|rule| &rule.id != id) {
-            state.selected_rule_id = state
-                .suggestions
-                .first()
-                .map(|suggestion| suggestion.rule.id.clone());
-        }
+    if let Some(id) = &state.selected_rule_id
+        && state.cfg.rules.iter().all(|rule| &rule.id != id)
+    {
+        state.selected_rule_id = state
+            .suggestions
+            .first()
+            .map(|suggestion| suggestion.rule.id.clone());
     }
 }
 
@@ -715,7 +714,7 @@ fn record_history(state: &mut AppState, action: &str) {
 }
 
 fn snippet_text(text: &str) -> String {
-    let mut cleaned = text.replace('\n', " ").replace('\r', " ");
+    let mut cleaned = text.replace(['\n', '\r'], " ");
     while cleaned.contains("  ") {
         cleaned = cleaned.replace("  ", " ");
     }
@@ -757,11 +756,11 @@ fn rule_detail(rule: &Rule) -> String {
     } else {
         "Transform: none".to_string()
     };
-    if let Some(desc) = &rule.description {
-        if !desc.trim().is_empty() {
-            base.push_str(" - ");
-            base.push_str(desc.trim());
-        }
+    if let Some(desc) = &rule.description
+        && !desc.trim().is_empty()
+    {
+        base.push_str(" - ");
+        base.push_str(desc.trim());
     }
     base
 }
@@ -821,7 +820,11 @@ fn rule_score(rule: &Rule, ctx: &MatchContext) -> i32 {
 
 fn ui_history_item(item: &HistoryItem) -> UiHistoryItem {
     UiHistoryItem {
-        time: item.time.with_timezone(&Local).format("%H:%M:%S").to_string(),
+        time: item
+            .time
+            .with_timezone(&Local)
+            .format("%H:%M:%S")
+            .to_string(),
         action: item.action.clone(),
         rule: item.rule.clone(),
         snippet: item.snippet.clone(),
@@ -1009,7 +1012,7 @@ fn build_hotkeys(
     }
 
     for entry in hotkey_map.values_mut() {
-        entry.apps.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        entry.apps.sort_by_key(|a| a.to_lowercase());
         entry.apps.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
     }
 
@@ -1022,14 +1025,14 @@ fn build_hotkeys(
                     rule.apps.join(", ")
                 ));
             }
-        } else if rule.apps.len() > 1 {
-            if let Some(entry) = hotkeys.get(id) {
-                warnings.push(format!(
-                    "Hotkey '{}' is shared by apps: {}.",
-                    entry.combos.join(", "),
-                    rule.apps.join(", ")
-                ));
-            }
+        } else if rule.apps.len() > 1
+            && let Some(entry) = hotkeys.get(id)
+        {
+            warnings.push(format!(
+                "Hotkey '{}' is shared by apps: {}.",
+                entry.combos.join(", "),
+                rule.apps.join(", ")
+            ));
         }
     }
 
@@ -1037,7 +1040,11 @@ fn build_hotkeys(
 }
 
 fn parse_hotkey(combo: &str) -> Result<HotKey, String> {
-    let parts: Vec<&str> = combo.split('+').map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
+    let parts: Vec<&str> = combo
+        .split('+')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
     if parts.is_empty() {
         return Err("empty hotkey".to_string());
     }
