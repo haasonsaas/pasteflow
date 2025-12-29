@@ -58,29 +58,53 @@ impl Rule {
 
     pub fn matches(&self, ctx: &MatchContext) -> Option<i32> {
         let mut score = 0;
+        let mut specificity = 0;
         if let Some(content_types) = &self.matchers.content_types {
-            if !content_types.iter().any(|t| ctx.content_types.contains(t)) {
+            let matched = content_types
+                .iter()
+                .filter(|t| ctx.content_types.contains(t))
+                .count();
+            if matched == 0 {
                 return None;
             }
-            score += 50;
+            score += 60 + (matched as i32 * 5);
+            specificity += 1;
         }
         if let Some(apps) = &self.matchers.apps {
             let active = ctx.active_app.as_deref().unwrap_or("");
             let active_lower = active.to_lowercase();
-            if !apps.iter().any(|app| active_lower.contains(&app.to_lowercase())) {
+            let mut matched = false;
+            let mut exact = false;
+            for app in apps {
+                let needle = app.to_lowercase();
+                if active_lower.contains(&needle) {
+                    matched = true;
+                    if active_lower == needle {
+                        exact = true;
+                    }
+                }
+            }
+            if !matched {
                 return None;
             }
-            score += 30;
+            score += 50;
+            if exact {
+                score += 10;
+            }
+            specificity += 1;
         }
         if let Some(pattern) = &self.matchers.regex {
             let re = Regex::new(pattern).ok()?;
             if !re.is_match(&ctx.text) {
                 return None;
             }
-            score += 20;
+            score += 40;
+            specificity += 1;
         }
-        if score == 0 {
+        if specificity == 0 {
             score = 1;
+        } else {
+            score += specificity * 5;
         }
         if self.pinned {
             score += 1000;

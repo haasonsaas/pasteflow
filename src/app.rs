@@ -10,7 +10,7 @@ use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::error::Error;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
@@ -40,6 +40,11 @@ struct AppState {
     panel: PanelState,
     config_text: Option<String>,
     config_error: Option<String>,
+    config_draft_error: Option<String>,
+    config_diff: Option<String>,
+    hotkey_manager: GlobalHotKeyManager,
+    registered_hotkeys: Vec<HotKey>,
+    hotkey_map: HashMap<u32, HotkeyRule>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +62,7 @@ enum IpcMessage {
     RemoveHotkeyApp { app: String },
     UpdateSearch { value: String },
     RequestConfig,
+    UpdateConfigDraft { raw: String },
     SaveConfig { raw: String },
 }
 
@@ -85,6 +91,8 @@ struct UiState {
     config: UiConfigState,
     config_text: Option<String>,
     config_error: Option<String>,
+    config_draft_error: Option<String>,
+    config_diff: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -114,11 +122,22 @@ struct TrayHandle {
     quit_id: MenuId,
 }
 
+#[derive(Debug, Default)]
+struct HotkeyRule {
+    apps: Vec<String>,
+    is_global: bool,
+}
+
+struct HotkeySpec {
+    combo: String,
+    app: Option<String>,
+}
+
 #[derive(Debug)]
 enum UserEvent {
     Ipc(IpcMessage),
     Menu(MenuEvent),
-    Hotkey,
+    Hotkey(u32),
 }
 
 type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -126,6 +145,7 @@ type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 pub fn run() -> AppResult<()> {
     let cfg = config::load_or_init()?;
     let clipboard = Clipboard::new().expect("clipboard available");
+    let hotkey_manager = GlobalHotKeyManager::new()?;
 
     let mut state = AppState {
         cfg,
@@ -143,6 +163,11 @@ pub fn run() -> AppResult<()> {
         },
         config_text: None,
         config_error: None,
+        config_draft_error: None,
+        config_diff: None,
+        hotkey_manager,
+        registered_hotkeys: Vec::new(),
+        hotkey_map: HashMap::new(),
     };
 
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
@@ -168,24 +193,13 @@ pub fn run() -> AppResult<()> {
 
     let tray = build_tray()?;
 
-    let hotkey_manager = GlobalHotKeyManager::new()?;
-    let mut registered = 0;
-    for combo in hotkey_combos(&state.cfg) {
-        if let Some(hotkey) = parse_hotkey(&combo) {
-            if hotkey_manager.register(hotkey).is_ok() {
-                registered += 1;
-            }
-        }
-    }
-    if registered == 0 {
-        return Err("no valid hotkeys registered".into());
-    }
+    let _ = apply_hotkeys(&mut state);
 
     let hotkey_proxy = event_loop.create_proxy();
     std::thread::spawn(move || {
         let rx = GlobalHotKeyEvent::receiver();
-        while rx.recv().is_ok() {
-            let _ = hotkey_proxy.send_event(UserEvent::Hotkey);
+        while let Ok(event) = rx.recv() {
+            let _ = hotkey_proxy.send_event(UserEvent::Hotkey(event.id()));
         }
     });
 
@@ -210,8 +224,10 @@ pub fn run() -> AppResult<()> {
                     elwt.exit();
                 }
             }
-            Event::UserEvent(UserEvent::Hotkey) => {
-                open_panel(&mut state, &window, &webview);
+            Event::UserEvent(UserEvent::Hotkey(id)) => {
+                if should_handle_hotkey(&state, id) {
+                    open_panel(&mut state, &window, &webview);
+                }
             }
             Event::WindowEvent { event, .. } => {
                 if matches!(event, WindowEvent::CloseRequested) {
@@ -374,6 +390,7 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
             if !trimmed.is_empty() {
                 state.cfg.hotkey.combo = trimmed;
                 persist_config(state);
+                let _ = apply_hotkeys(state);
             }
             send_state(state, webview);
         }
@@ -390,12 +407,14 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
                         .insert(app_trimmed, combo_trimmed);
                 }
                 persist_config(state);
+                let _ = apply_hotkeys(state);
             }
             send_state(state, webview);
         }
         IpcMessage::RemoveHotkeyApp { app } => {
             state.cfg.hotkey.apps.remove(app.trim());
             persist_config(state);
+            let _ = apply_hotkeys(state);
             send_state(state, webview);
         }
         IpcMessage::UpdateSearch { value } => {
@@ -407,9 +426,31 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
                 Ok(raw) => {
                     state.config_text = Some(raw);
                     state.config_error = None;
+                    state.config_draft_error = None;
+                    state.config_diff = None;
                 }
                 Err(err) => {
                     state.config_error = Some(err.to_string());
+                }
+            }
+            send_state(state, webview);
+        }
+        IpcMessage::UpdateConfigDraft { raw } => {
+            if let Some(saved) = state.config_text.as_deref() {
+                if saved == raw {
+                    state.config_diff = None;
+                } else {
+                    state.config_diff = Some(diff::unified_diff(saved, &raw));
+                }
+            } else {
+                state.config_diff = None;
+            }
+            match config::parse_raw(&raw) {
+                Ok(_) => {
+                    state.config_draft_error = None;
+                }
+                Err(err) => {
+                    state.config_draft_error = Some(err.to_string());
                 }
             }
             send_state(state, webview);
@@ -423,8 +464,11 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
                         state.cfg = cfg;
                         state.config_text = Some(raw);
                         state.config_error = None;
+                        state.config_draft_error = None;
+                        state.config_diff = None;
                         rebuild_suggestions(state);
                         refresh_preview(state);
+                        let _ = apply_hotkeys(state);
                     }
                 }
                 Err(err) => {
@@ -525,6 +569,8 @@ fn send_state(state: &AppState, webview: &WebView) {
         config: build_ui_config_state(&state.cfg),
         config_text: state.config_text.clone(),
         config_error: state.config_error.clone(),
+        config_draft_error: state.config_draft_error.clone(),
+        config_diff: state.config_diff.clone(),
     };
 
     if let Ok(payload) = serde_json::to_string(&ui_state) {
@@ -679,6 +725,8 @@ fn persist_config(state: &mut AppState) {
         Ok(_) => {
             state.config_error = None;
             state.config_text = config::load_raw().ok();
+            state.config_diff = None;
+            state.config_draft_error = None;
         }
         Err(err) => {
             state.config_error = Some(err.to_string());
@@ -693,23 +741,110 @@ fn active_app_name() -> Option<String> {
     }
 }
 
-fn hotkey_combos(cfg: &config::Config) -> Vec<String> {
-    let mut combos = Vec::new();
-    combos.push(cfg.hotkey.combo.clone());
-    for combo in cfg.hotkey.apps.values() {
-        combos.push(combo.clone());
+fn should_handle_hotkey(state: &AppState, id: u32) -> bool {
+    let Some(rule) = state.hotkey_map.get(&id) else {
+        return true;
+    };
+    if rule.is_global || rule.apps.is_empty() {
+        return true;
     }
-    let mut seen = HashSet::new();
-    combos
-        .into_iter()
-        .filter(|combo| seen.insert(combo.to_lowercase()))
-        .collect()
+    let active = active_app_name().unwrap_or_default().to_lowercase();
+    if active.is_empty() {
+        return false;
+    }
+    rule.apps
+        .iter()
+        .any(|app| active.contains(&app.to_lowercase()))
 }
 
-fn parse_hotkey(combo: &str) -> Option<HotKey> {
-    let parts: Vec<&str> = combo.split('+').map(|p| p.trim()).collect();
+fn apply_hotkeys(state: &mut AppState) -> AppResult<()> {
+    let specs = build_hotkey_specs(&state.cfg);
+    let (hotkeys, map, errors) = build_hotkeys(specs);
+
+    if hotkeys.is_empty() {
+        state.config_error = Some("No valid hotkeys registered.".to_string());
+        return Err("no valid hotkeys registered".into());
+    }
+
+    if !state.registered_hotkeys.is_empty() {
+        let _ = state
+            .hotkey_manager
+            .unregister_all(&state.registered_hotkeys);
+    }
+
+    let mut registered = Vec::new();
+    if state.hotkey_manager.register_all(&hotkeys).is_ok() {
+        registered = hotkeys;
+    } else {
+        for hotkey in hotkeys {
+            if state.hotkey_manager.register(hotkey).is_ok() {
+                registered.push(hotkey);
+            }
+        }
+    }
+
+    if registered.is_empty() {
+        state.config_error = Some("Failed to register hotkeys.".to_string());
+        return Err("failed to register hotkeys".into());
+    }
+
+    state.registered_hotkeys = registered;
+    state.hotkey_map = map;
+    if !errors.is_empty() {
+        state.config_error = Some(errors.join(" | "));
+    }
+    Ok(())
+}
+
+fn build_hotkey_specs(cfg: &config::Config) -> Vec<HotkeySpec> {
+    let mut specs = Vec::new();
+    specs.push(HotkeySpec {
+        combo: cfg.hotkey.combo.clone(),
+        app: None,
+    });
+    for (app, combo) in &cfg.hotkey.apps {
+        specs.push(HotkeySpec {
+            combo: combo.clone(),
+            app: Some(app.clone()),
+        });
+    }
+    specs
+}
+
+fn build_hotkeys(specs: Vec<HotkeySpec>) -> (Vec<HotKey>, HashMap<u32, HotkeyRule>, Vec<String>) {
+    let mut hotkey_map: HashMap<u32, HotkeyRule> = HashMap::new();
+    let mut hotkeys: HashMap<u32, HotKey> = HashMap::new();
+    let mut errors = Vec::new();
+
+    for spec in specs {
+        match parse_hotkey(&spec.combo) {
+            Ok(hotkey) => {
+                let entry = hotkey_map.entry(hotkey.id()).or_default();
+                if let Some(app) = spec.app {
+                    entry.apps.push(app);
+                } else {
+                    entry.is_global = true;
+                }
+                hotkeys.entry(hotkey.id()).or_insert(hotkey);
+            }
+            Err(err) => {
+                errors.push(format!("Hotkey '{}': {}", spec.combo, err));
+            }
+        }
+    }
+
+    for entry in hotkey_map.values_mut() {
+        entry.apps.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        entry.apps.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    }
+
+    (hotkeys.into_values().collect(), hotkey_map, errors)
+}
+
+fn parse_hotkey(combo: &str) -> Result<HotKey, String> {
+    let parts: Vec<&str> = combo.split('+').map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
     if parts.is_empty() {
-        return None;
+        return Err("empty hotkey".to_string());
     }
 
     let mut modifiers = Modifiers::empty();
@@ -722,15 +857,92 @@ fn parse_hotkey(combo: &str) -> Option<HotKey> {
             "alt" | "option" => modifiers |= Modifiers::ALT,
             "ctrl" | "control" => modifiers |= Modifiers::CONTROL,
             key => {
-                code = Some(match key {
-                    "v" => Code::KeyV,
-                    "c" => Code::KeyC,
-                    "p" => Code::KeyP,
-                    _ => return None,
-                });
+                code = code_from_key(key);
+                if code.is_none() {
+                    return Err(format!("unsupported key '{}'", key));
+                }
             }
         }
     }
 
-    Some(HotKey::new(Some(modifiers), code?))
+    let code = code.ok_or_else(|| "missing key".to_string())?;
+    Ok(HotKey::new(Some(modifiers), code))
+}
+
+fn code_from_key(key: &str) -> Option<Code> {
+    if key.len() == 1 {
+        let ch = key.chars().next()?;
+        if ch.is_ascii_alphabetic() {
+            return Some(match ch.to_ascii_uppercase() {
+                'A' => Code::KeyA,
+                'B' => Code::KeyB,
+                'C' => Code::KeyC,
+                'D' => Code::KeyD,
+                'E' => Code::KeyE,
+                'F' => Code::KeyF,
+                'G' => Code::KeyG,
+                'H' => Code::KeyH,
+                'I' => Code::KeyI,
+                'J' => Code::KeyJ,
+                'K' => Code::KeyK,
+                'L' => Code::KeyL,
+                'M' => Code::KeyM,
+                'N' => Code::KeyN,
+                'O' => Code::KeyO,
+                'P' => Code::KeyP,
+                'Q' => Code::KeyQ,
+                'R' => Code::KeyR,
+                'S' => Code::KeyS,
+                'T' => Code::KeyT,
+                'U' => Code::KeyU,
+                'V' => Code::KeyV,
+                'W' => Code::KeyW,
+                'X' => Code::KeyX,
+                'Y' => Code::KeyY,
+                'Z' => Code::KeyZ,
+                _ => return None,
+            });
+        }
+        if ch.is_ascii_digit() {
+            return Some(match ch {
+                '0' => Code::Digit0,
+                '1' => Code::Digit1,
+                '2' => Code::Digit2,
+                '3' => Code::Digit3,
+                '4' => Code::Digit4,
+                '5' => Code::Digit5,
+                '6' => Code::Digit6,
+                '7' => Code::Digit7,
+                '8' => Code::Digit8,
+                '9' => Code::Digit9,
+                _ => return None,
+            });
+        }
+    }
+
+    match key {
+        "space" => Some(Code::Space),
+        "tab" => Some(Code::Tab),
+        "enter" | "return" => Some(Code::Enter),
+        "esc" | "escape" => Some(Code::Escape),
+        "backspace" => Some(Code::Backspace),
+        "delete" => Some(Code::Delete),
+        "up" => Some(Code::ArrowUp),
+        "down" => Some(Code::ArrowDown),
+        "left" => Some(Code::ArrowLeft),
+        "right" => Some(Code::ArrowRight),
+        "f1" => Some(Code::F1),
+        "f2" => Some(Code::F2),
+        "f3" => Some(Code::F3),
+        "f4" => Some(Code::F4),
+        "f5" => Some(Code::F5),
+        "f6" => Some(Code::F6),
+        "f7" => Some(Code::F7),
+        "f8" => Some(Code::F8),
+        "f9" => Some(Code::F9),
+        "f10" => Some(Code::F10),
+        "f11" => Some(Code::F11),
+        "f12" => Some(Code::F12),
+        _ => None,
+    }
 }

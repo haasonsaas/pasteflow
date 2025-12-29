@@ -162,6 +162,10 @@
         display: flex;
         flex-direction: column;
       }
+      .pane.active {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(10, 91, 94, 0.12);
+      }
       .pane h3 {
         margin: 0 0 8px 0;
         font-size: 12px;
@@ -175,6 +179,15 @@
         word-break: break-word;
         font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
         font-size: 12px;
+      }
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+      .empty-state {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 6px 0;
       }
       #diff {
         grid-column: 1 / -1;
@@ -259,12 +272,27 @@
         font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
         font-size: 12px;
       }
+      #configDiff {
+        width: 100%;
+        min-height: 120px;
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        background: #fffdf8;
+      }
       #configActions {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
       }
       #configError {
+        color: #9c2d1f;
+        font-size: 12px;
+      }
+      #configDraftError {
         color: #9c2d1f;
         font-size: 12px;
       }
@@ -355,7 +383,7 @@
       <div id="configDirtyNotice" hidden>Raw editor has unsaved changes. UI controls are disabled.</div>
       <div class="config-section">
         <strong>Hotkeys</strong>
-        <div class="config-note">Changes apply after restart.</div>
+        <div class="config-note">Changes apply immediately.</div>
         <div class="config-row">
           <span>Global hotkey</span>
           <input class="config-input" id="hotkeyCombo" placeholder="Cmd+Shift+V" />
@@ -374,8 +402,11 @@
       <div class="config-section">
         <strong>Raw TOML</strong>
       <textarea id="configText" spellcheck="false"></textarea>
+      <div id="configDraftError"></div>
+      <div id="configDiff"></div>
       <div id="configError"></div>
       <div id="configActions">
+        <button class="action" id="configRevert">Revert</button>
         <button class="action" id="configReload">Reload</button>
         <button class="action" id="configClose">Close</button>
         <button class="action primary" id="configSave">Save</button>
@@ -400,11 +431,14 @@
         config: { hotkey_combo: "", hotkey_apps: [], rules: [] },
         configText: null,
         configError: null,
+        configDraftError: null,
+        configDiff: null,
       };
 
       let searchQuery = "";
       let configOpen = false;
       let configDirty = false;
+      let configDraftTimer = null;
 
       const searchInput = document.getElementById("ruleSearch");
       const configPanel = document.getElementById("configPanel");
@@ -416,6 +450,9 @@
       const hotkeyAddBtn = document.getElementById("hotkeyAddBtn");
       const ruleEditorList = document.getElementById("ruleEditorList");
       const configDirtyNotice = document.getElementById("configDirtyNotice");
+      const configDiff = document.getElementById("configDiff");
+      const configDraftError = document.getElementById("configDraftError");
+      const configRevertBtn = document.getElementById("configRevert");
 
       function visibleRules() {
         const list = searchQuery.trim()
@@ -435,6 +472,13 @@
         const suggestions = document.getElementById("suggestions");
         suggestions.innerHTML = "";
         const list = visibleRules();
+        if (!list.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = searchQuery ? "No rules match your search." : "No rules matched this clipboard.";
+          suggestions.appendChild(empty);
+          return;
+        }
         list.forEach((rule) => {
           const btn = document.createElement("button");
           btn.className = "rule-button" + (rule.id === state.selectedRuleId ? " active" : "");
@@ -475,7 +519,9 @@
       }
 
       function renderRuleInfo() {
+        const panel = document.getElementById("ruleInfo");
         const selected = state.allRules.find((rule) => rule.id === state.selectedRuleId);
+        panel.classList.toggle("active", !!selected);
         document.getElementById("ruleInfoName").textContent = selected ? selected.name : "-";
         document.getElementById("ruleInfoDetail").textContent = selected ? selected.detail : "";
         document.getElementById("ruleInfoMatch").textContent = selected ? selected.match_hint : "";
@@ -533,16 +579,30 @@
       function renderConfig() {
         configPanel.classList.toggle("visible", configOpen);
         configDirtyNotice.hidden = !configDirty;
-        if (configOpen && state.configText && !configDirty) {
+        const hasConfig = !!state.configText;
+        if (configOpen && hasConfig && !configDirty) {
           configText.value = state.configText;
         }
+        if (configOpen && !hasConfig) {
+          configText.value = "Loading config...";
+        }
+        configText.disabled = !hasConfig;
         document.getElementById("configError").textContent = state.configError || "";
+        configDraftError.textContent = state.configDraftError || "";
+        if (state.configDiff && state.configDiff.trim().length) {
+          configDiff.textContent = state.configDiff;
+          configDiff.classList.remove("empty");
+        } else {
+          configDiff.textContent = "No changes.";
+          configDiff.classList.add("empty");
+        }
 
         const disabled = configDirty;
         hotkeyComboInput.disabled = disabled;
         hotkeyAppInput.disabled = disabled;
         hotkeyComboAddInput.disabled = disabled;
         hotkeyAddBtn.disabled = disabled;
+        configRevertBtn.disabled = !configDirty;
 
         hotkeyComboInput.value = state.config.hotkey_combo || "";
         hotkeyComboInput.onchange = (event) => {
@@ -640,9 +700,33 @@
         renderRules();
         renderMeta();
         renderRuleInfo();
-        document.getElementById("before").textContent = state.before || "";
-        document.getElementById("after").textContent = state.after || "";
-        document.getElementById("diffText").textContent = state.diff || "";
+        const beforeEl = document.getElementById("before");
+        const afterEl = document.getElementById("after");
+        const diffEl = document.getElementById("diffText");
+
+        if (state.before && state.before.length) {
+          beforeEl.textContent = state.before;
+          beforeEl.classList.remove("empty");
+        } else {
+          beforeEl.textContent = "Clipboard is empty.";
+          beforeEl.classList.add("empty");
+        }
+
+        if (state.after && state.after.length) {
+          afterEl.textContent = state.after;
+          afterEl.classList.remove("empty");
+        } else {
+          afterEl.textContent = "No output yet.";
+          afterEl.classList.add("empty");
+        }
+
+        if (state.diff && state.diff.length) {
+          diffEl.textContent = state.diff;
+          diffEl.classList.remove("empty");
+        } else {
+          diffEl.textContent = "No changes.";
+          diffEl.classList.add("empty");
+        }
         renderConfig();
       }
 
@@ -656,6 +740,9 @@
         state.activeApp = next.active_app || null;
         state.contentTypes = next.content_types || [];
         state.config = next.config || state.config;
+        state.configDraftError = next.config_draft_error || null;
+        state.configDiff = next.config_diff || null;
+        configDirty = !!(state.configDiff && state.configDiff.trim().length);
         if (!document.activeElement || document.activeElement !== searchInput) {
           searchQuery = (next.search_query || "").toLowerCase();
           searchInput.value = searchQuery;
@@ -695,6 +782,14 @@
         window.ipc.postMessage(JSON.stringify({ type: "request_config" }));
       };
 
+      configRevertBtn.onclick = () => {
+        if (!state.configText) return;
+        configDirty = false;
+        configText.value = state.configText;
+        window.ipc.postMessage(JSON.stringify({ type: "update_config_draft", raw: configText.value }));
+        renderConfig();
+      };
+
       document.getElementById("configClose").onclick = () => {
         configOpen = false;
         renderConfig();
@@ -707,6 +802,12 @@
 
       configText.addEventListener("input", () => {
         configDirty = true;
+        if (configDraftTimer) {
+          clearTimeout(configDraftTimer);
+        }
+        configDraftTimer = setTimeout(() => {
+          window.ipc.postMessage(JSON.stringify({ type: "update_config_draft", raw: configText.value }));
+        }, 150);
       });
 
       searchInput.addEventListener("input", (event) => {

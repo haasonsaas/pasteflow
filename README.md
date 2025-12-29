@@ -27,6 +27,7 @@ The app runs in the menu bar. Use the hotkey to open the diff panel.
 ## In-app config editor
 Open **Edit config** to view and edit the TOML config in-app. Changes are validated before saving.
 You can also edit rule descriptions, pinned flags, and per-app hotkeys directly in the panel.
+Raw TOML edits show a live diff preview and inline validation, with a Revert button to discard changes.
 
 ## Rule info + sticky state
 - Rule info panel shows transform, match hints, and flags for the selected rule.
@@ -37,8 +38,7 @@ You can also edit rule descriptions, pinned flags, and per-app hotkeys directly 
 Set `pinned = true` on any rule to keep it at the top of suggestions (when it matches), or toggle it in the Rule Info panel.
 
 ## Per-app hotkeys
-You can register additional hotkeys per app. The app registers all combos on launch.
-Restart Pasteflow after changing hotkeys.
+You can register additional hotkeys per app. Changes apply immediately.
 
 ## Notes
 - Pasteflow simulates `Cmd+V` after copying the transformed text; macOS may prompt for Accessibility permission.
