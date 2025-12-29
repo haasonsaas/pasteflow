@@ -1,0 +1,64 @@
+# Pasteflow default rules. Copy to ~/.config/pasteflow/config.toml to customize.
+
+[hotkey]
+combo = "Cmd+Shift+V"
+
+[ui]
+suggestions = 3
+
+[[rules]]
+id = "json_prettify"
+name = "JSON Prettify"
+transform = "json_prettify"
+auto_accept = false
+[rules.match]
+content_types = ["json"]
+
+[[rules]]
+id = "json_minify"
+name = "JSON Minify"
+transform = "json_minify"
+auto_accept = false
+[rules.match]
+content_types = ["json"]
+
+[[rules]]
+id = "json_to_yaml"
+name = "JSON → YAML"
+transform = "json_to_yaml"
+auto_accept = false
+[rules.match]
+content_types = ["json"]
+
+[[rules]]
+id = "yaml_to_json"
+name = "YAML → JSON"
+transform = "yaml_to_json"
+auto_accept = false
+[rules.match]
+content_types = ["yaml"]
+
+[[rules]]
+id = "strip_formatting"
+name = "Paste as Plain Text"
+transform = "strip_formatting"
+auto_accept = false
+[rules.match]
+content_types = ["text", "list", "json", "yaml"]
+
+[[rules]]
+id = "bullet_normalize"
+name = "Normalize Bullet List"
+transform = "bullet_normalize"
+auto_accept = false
+[rules.match]
+content_types = ["list"]
+
+[[rules]]
+id = "timestamp_normalize"
+name = "Normalize Timestamp"
+transform = "timestamp_normalize"
+auto_accept = false
+[rules.match]
+content_types = ["timestamp"]
+
