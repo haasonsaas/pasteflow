@@ -27,7 +27,13 @@
         border-bottom: 1px solid var(--border);
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
+      }
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
       }
       #suggestions {
         display: flex;
@@ -47,6 +53,40 @@
         border-color: var(--accent);
         color: var(--accent);
         font-weight: 600;
+      }
+      .search-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #ruleSearch {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 13px;
+        background: var(--panel);
+        min-width: 220px;
+      }
+      #configToggle {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      #badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .badge {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 11px;
+        color: var(--muted);
       }
       #meta {
         display: flex;
@@ -94,6 +134,37 @@
       #diff {
         grid-column: 1 / -1;
       }
+      #configPanel {
+        margin: 0 20px 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel);
+        padding: 12px;
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #configPanel.visible {
+        display: flex;
+      }
+      #configText {
+        width: 100%;
+        min-height: 180px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+        font-size: 12px;
+      }
+      #configActions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      #configError {
+        color: #9c2d1f;
+        font-size: 12px;
+      }
       #actions {
         padding: 12px 20px 16px;
         display: flex;
@@ -117,12 +188,30 @@
         main {
           grid-template-columns: 1fr;
         }
+        .header-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        #ruleSearch {
+          width: 100%;
+          min-width: 0;
+        }
       }
     </style>
   </head>
   <body>
     <header>
-      <div id="suggestions"></div>
+      <div class="header-row">
+        <div id="suggestions"></div>
+        <div class="search-wrap">
+          <input id="ruleSearch" type="search" placeholder="Search rules ( / )" />
+          <button id="configToggle">Edit config</button>
+        </div>
+      </div>
+      <div id="badges">
+        <span class="badge" id="appBadge">App: —</span>
+        <span class="badge" id="typeBadge">Types: —</span>
+      </div>
       <div id="meta">
         <label>
           <input type="checkbox" id="autoAccept" />
@@ -145,6 +234,16 @@
         <pre id="diffText"></pre>
       </section>
     </main>
+    <section id="configPanel">
+      <h3>Config (TOML)</h3>
+      <textarea id="configText" spellcheck="false"></textarea>
+      <div id="configError"></div>
+      <div id="configActions">
+        <button class="action" id="configReload">Reload</button>
+        <button class="action" id="configClose">Close</button>
+        <button class="action primary" id="configSave">Save</button>
+      </div>
+    </section>
     <div id="actions">
       <button class="action" id="copy">Copy</button>
       <button class="action primary" id="paste">Paste</button>
@@ -152,27 +251,55 @@
     </div>
     <script>
       const state = {
-        rules: [],
+        suggestions: [],
+        allRules: [],
         selectedRuleId: null,
         before: "",
         after: "",
         diff: "",
+        activeApp: null,
+        contentTypes: [],
+        configText: null,
+        configError: null,
       };
 
-      function render() {
+      let searchQuery = "";
+      let configOpen = false;
+      let configDirty = false;
+
+      const searchInput = document.getElementById("ruleSearch");
+      const configPanel = document.getElementById("configPanel");
+      const configText = document.getElementById("configText");
+
+      function visibleRules() {
+        const list = searchQuery.trim()
+          ? state.allRules.filter((rule) =>
+              rule.name.toLowerCase().includes(searchQuery) || rule.id.toLowerCase().includes(searchQuery)
+            )
+          : state.suggestions;
+        return list.slice(0, searchQuery ? 10 : list.length);
+      }
+
+      function selectRule(id) {
+        if (!id) return;
+        window.ipc.postMessage(JSON.stringify({ type: "select_rule", id }));
+      }
+
+      function renderRules() {
         const suggestions = document.getElementById("suggestions");
         suggestions.innerHTML = "";
-        state.rules.forEach((rule) => {
+        const list = visibleRules();
+        list.forEach((rule) => {
           const btn = document.createElement("button");
           btn.className = "rule-button" + (rule.id === state.selectedRuleId ? " active" : "");
           btn.textContent = rule.name;
-          btn.onclick = () => {
-            window.ipc.postMessage(JSON.stringify({ type: "select_rule", id: rule.id }));
-          };
+          btn.onclick = () => selectRule(rule.id);
           suggestions.appendChild(btn);
         });
+      }
 
-        const selected = state.rules.find((rule) => rule.id === state.selectedRuleId);
+      function renderMeta() {
+        const selected = state.allRules.find((rule) => rule.id === state.selectedRuleId);
         const autoAccept = document.getElementById("autoAccept");
         autoAccept.checked = selected ? selected.auto_accept : false;
         autoAccept.onchange = (event) => {
@@ -185,19 +312,50 @@
         const badge = document.getElementById("remote-badge");
         badge.hidden = !(selected && selected.uses_remote);
 
+        document.getElementById("appBadge").textContent = `App: ${state.activeApp || "—"}`;
+        const types = state.contentTypes.length ? state.contentTypes.join(", ") : "—";
+        document.getElementById("typeBadge").textContent = `Types: ${types}`;
+      }
+
+      function renderConfig() {
+        configPanel.classList.toggle("visible", configOpen);
+        if (configOpen && state.configText && !configDirty) {
+          configText.value = state.configText;
+        }
+        document.getElementById("configError").textContent = state.configError || "";
+      }
+
+      function render() {
+        renderRules();
+        renderMeta();
         document.getElementById("before").textContent = state.before || "";
         document.getElementById("after").textContent = state.after || "";
         document.getElementById("diffText").textContent = state.diff || "";
+        renderConfig();
       }
 
       window.__SET_STATE__ = (next) => {
-        state.rules = next.rules || [];
-        state.selectedRuleId = next.selectedRuleId || (state.rules[0] && state.rules[0].id);
+        state.suggestions = next.suggestions || [];
+        state.allRules = next.all_rules || [];
+        state.selectedRuleId = next.selected_rule_id || (state.suggestions[0] && state.suggestions[0].id);
         state.before = next.before || "";
         state.after = next.after || "";
         state.diff = next.diff || "";
+        state.activeApp = next.active_app || null;
+        state.contentTypes = next.content_types || [];
+        state.configText = next.config_text || state.configText;
+        state.configError = next.config_error || null;
         render();
       };
+
+      function cycleSelection(delta) {
+        const list = visibleRules();
+        if (!list.length) return;
+        const ids = list.map((rule) => rule.id);
+        const current = ids.indexOf(state.selectedRuleId);
+        const nextIndex = current === -1 ? 0 : (current + delta + ids.length) % ids.length;
+        selectRule(ids[nextIndex]);
+      }
 
       document.getElementById("paste").onclick = () =>
         window.ipc.postMessage(JSON.stringify({ type: "paste" }));
@@ -206,11 +364,77 @@
       document.getElementById("cancel").onclick = () =>
         window.ipc.postMessage(JSON.stringify({ type: "cancel" }));
 
+      document.getElementById("configToggle").onclick = () => {
+        configOpen = !configOpen;
+        configDirty = false;
+        if (configOpen) {
+          window.ipc.postMessage(JSON.stringify({ type: "request_config" }));
+        }
+        renderConfig();
+      };
+
+      document.getElementById("configReload").onclick = () => {
+        configDirty = false;
+        window.ipc.postMessage(JSON.stringify({ type: "request_config" }));
+      };
+
+      document.getElementById("configClose").onclick = () => {
+        configOpen = false;
+        renderConfig();
+      };
+
+      document.getElementById("configSave").onclick = () => {
+        const raw = configText.value;
+        window.ipc.postMessage(JSON.stringify({ type: "save_config", raw }));
+      };
+
+      configText.addEventListener("input", () => {
+        configDirty = true;
+      });
+
+      searchInput.addEventListener("input", (event) => {
+        searchQuery = event.target.value.toLowerCase();
+        renderRules();
+      });
+
       window.addEventListener("keydown", (event) => {
+        const tag = document.activeElement && document.activeElement.tagName.toLowerCase();
+        const inField = tag === "input" || tag === "textarea";
+
+        if (!inField && event.key === "/") {
+          event.preventDefault();
+          searchInput.focus();
+          return;
+        }
+
+        if (!inField && event.metaKey && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          searchInput.focus();
+          return;
+        }
+
+        if (!inField && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+          event.preventDefault();
+          cycleSelection(event.key === "ArrowDown" ? 1 : -1);
+          return;
+        }
+
         if (event.key === "Escape") {
           event.preventDefault();
+          if (configOpen) {
+            configOpen = false;
+            renderConfig();
+            return;
+          }
+          if (searchQuery) {
+            searchQuery = "";
+            searchInput.value = "";
+            renderRules();
+            return;
+          }
           window.ipc.postMessage(JSON.stringify({ type: "cancel" }));
         }
+
         if (event.metaKey && event.key === "Enter") {
           event.preventDefault();
           window.ipc.postMessage(JSON.stringify({ type: "paste" }));

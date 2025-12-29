@@ -91,3 +91,24 @@ pub fn save(cfg: &Config) -> Result<(), ConfigError> {
     Ok(())
 }
 
+pub fn load_raw() -> Result<String, ConfigError> {
+    let path = config_path();
+    if !path.exists() {
+        let _ = load_or_init()?;
+    }
+    Ok(fs::read_to_string(path)?)
+}
+
+pub fn parse_raw(raw: &str) -> Result<Config, ConfigError> {
+    let cfg: Config = toml::from_str(raw)?;
+    Ok(cfg)
+}
+
+pub fn write_raw(raw: &str) -> Result<(), ConfigError> {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, raw)?;
+    Ok(())
+}

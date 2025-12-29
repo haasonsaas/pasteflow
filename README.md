@@ -18,6 +18,15 @@ cargo run --release
 
 The app runs in the menu bar. Use the hotkey to open the diff panel.
 
+## Shortcuts
+- `/` or `Cmd+K`: focus rule search.
+- `↑ / ↓`: cycle suggested rules.
+- `Cmd+Enter`: paste.
+- `Esc`: close panel (or clear search, or close config editor).
+
+## In-app config editor
+Open **Edit config** to view and edit the TOML config in-app. Changes are validated before saving.
+
 ## Notes
 - Pasteflow simulates `Cmd+V` after copying the transformed text; macOS may prompt for Accessibility permission.
 - LLM rules are supported in config but are off by default and require explicit per-rule opt-in.

@@ -24,6 +24,8 @@ struct PanelState {
     input: String,
     output: String,
     diff: String,
+    active_app: Option<String>,
+    content_types: Vec<crate::detect::ContentType>,
 }
 
 struct AppState {
@@ -32,6 +34,8 @@ struct AppState {
     suggestions: Vec<Suggestion>,
     selected_rule_id: Option<String>,
     panel: PanelState,
+    config_text: Option<String>,
+    config_error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +46,8 @@ enum IpcMessage {
     Cancel,
     SelectRule { id: String },
     ToggleAutoAccept { id: String, value: bool },
+    RequestConfig,
+    SaveConfig { raw: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -57,8 +63,13 @@ struct UiState {
     before: String,
     after: String,
     diff: String,
-    rules: Vec<UiRule>,
+    suggestions: Vec<UiRule>,
+    all_rules: Vec<UiRule>,
     selected_rule_id: Option<String>,
+    active_app: Option<String>,
+    content_types: Vec<String>,
+    config_text: Option<String>,
+    config_error: Option<String>,
 }
 
 struct TrayHandle {
@@ -89,7 +100,11 @@ pub fn run() -> AppResult<()> {
             input: String::new(),
             output: String::new(),
             diff: String::new(),
+            active_app: None,
+            content_types: Vec::new(),
         },
+        config_text: None,
+        config_error: None,
     };
 
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
@@ -209,15 +224,18 @@ fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &We
     let active_app = active_app_name();
     let ctx = MatchContext {
         text: text.clone(),
-        content_types,
-        active_app,
+        content_types: content_types.clone(),
+        active_app: active_app.clone(),
     };
-    state.suggestions = crate::rules::suggest_rules(&state.cfg.rules, &ctx, state.cfg.ui.suggestions);
+    state.suggestions =
+        crate::rules::suggest_rules(&state.cfg.rules, &ctx, state.cfg.ui.suggestions);
     state.selected_rule_id = state
         .suggestions
         .first()
         .map(|suggestion| suggestion.rule.id.clone());
     state.panel.input = text;
+    state.panel.active_app = active_app;
+    state.panel.content_types = content_types;
     refresh_preview(state);
 
     if let Some(rule) = selected_rule(state) {
@@ -259,6 +277,37 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
             refresh_preview(state);
             send_state(state, webview);
         }
+        IpcMessage::RequestConfig => {
+            match config::load_raw() {
+                Ok(raw) => {
+                    state.config_text = Some(raw);
+                    state.config_error = None;
+                }
+                Err(err) => {
+                    state.config_error = Some(err.to_string());
+                }
+            }
+            send_state(state, webview);
+        }
+        IpcMessage::SaveConfig { raw } => {
+            match config::parse_raw(&raw) {
+                Ok(cfg) => {
+                    if let Err(err) = config::write_raw(&raw) {
+                        state.config_error = Some(err.to_string());
+                    } else {
+                        state.cfg = cfg;
+                        state.config_text = Some(raw);
+                        state.config_error = None;
+                        rebuild_suggestions(state);
+                        refresh_preview(state);
+                    }
+                }
+                Err(err) => {
+                    state.config_error = Some(err.to_string());
+                }
+            }
+            send_state(state, webview);
+        }
     }
 }
 
@@ -271,6 +320,26 @@ fn refresh_preview(state: &mut AppState) {
     };
     state.panel.output = output.clone();
     state.panel.diff = diff::unified_diff(&input, &output);
+}
+
+fn rebuild_suggestions(state: &mut AppState) {
+    let text = state.panel.input.clone();
+    let content_types = detect::detect_content_types(&text);
+    let ctx = MatchContext {
+        text,
+        content_types,
+        active_app: state.panel.active_app.clone().or_else(active_app_name),
+    };
+    state.suggestions =
+        crate::rules::suggest_rules(&state.cfg.rules, &ctx, state.cfg.ui.suggestions);
+    if let Some(id) = &state.selected_rule_id {
+        if state.cfg.rules.iter().all(|rule| &rule.id != id) {
+            state.selected_rule_id = state
+                .suggestions
+                .first()
+                .map(|suggestion| suggestion.rule.id.clone());
+        }
+    }
 }
 
 fn apply_rule(rule: &Rule, input: &str) -> String {
@@ -288,15 +357,19 @@ fn apply_rule(rule: &Rule, input: &str) -> String {
 
 fn selected_rule(state: &AppState) -> Option<&Rule> {
     let id = state.selected_rule_id.as_deref()?;
-    state
+    if let Some(rule) = state
         .suggestions
         .iter()
         .find(|suggestion| suggestion.rule.id == id)
         .map(|suggestion| &suggestion.rule)
+    {
+        return Some(rule);
+    }
+    state.cfg.rules.iter().find(|rule| rule.id == id)
 }
 
 fn send_state(state: &AppState, webview: &WebView) {
-    let ui_rules: Vec<UiRule> = state
+    let suggestions: Vec<UiRule> = state
         .suggestions
         .iter()
         .map(|suggestion| UiRule {
@@ -307,12 +380,36 @@ fn send_state(state: &AppState, webview: &WebView) {
         })
         .collect();
 
+    let all_rules: Vec<UiRule> = state
+        .cfg
+        .rules
+        .iter()
+        .map(|rule| UiRule {
+            id: rule.id.clone(),
+            name: rule.name.clone(),
+            auto_accept: rule.auto_accept,
+            uses_remote: rule.llm.is_some(),
+        })
+        .collect();
+
+    let content_types = state
+        .panel
+        .content_types
+        .iter()
+        .map(content_type_label)
+        .collect();
+
     let ui_state = UiState {
         before: state.panel.input.clone(),
         after: state.panel.output.clone(),
         diff: state.panel.diff.clone(),
-        rules: ui_rules,
+        suggestions,
+        all_rules,
         selected_rule_id: state.selected_rule_id.clone(),
+        active_app: state.panel.active_app.clone(),
+        content_types,
+        config_text: state.config_text.clone(),
+        config_error: state.config_error.clone(),
     };
 
     if let Ok(payload) = serde_json::to_string(&ui_state) {
@@ -331,6 +428,16 @@ fn apply_paste(state: &mut AppState) {
     enigo.key_down(Key::Meta);
     enigo.key_click(Key::Layout('v'));
     enigo.key_up(Key::Meta);
+}
+
+fn content_type_label(content_type: &crate::detect::ContentType) -> String {
+    match content_type {
+        crate::detect::ContentType::Json => "json".to_string(),
+        crate::detect::ContentType::Yaml => "yaml".to_string(),
+        crate::detect::ContentType::Text => "text".to_string(),
+        crate::detect::ContentType::List => "list".to_string(),
+        crate::detect::ContentType::Timestamp => "timestamp".to_string(),
+    }
 }
 
 fn active_app_name() -> Option<String> {
