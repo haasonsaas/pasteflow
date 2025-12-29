@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pasteflow</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f4ef;
+        --ink: #1f1f1f;
+        --muted: #6b6b6b;
+        --panel: #ffffff;
+        --accent: #0a5b5e;
+        --accent-2: #f0e1b4;
+        --border: #e0ddd6;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif;
+        background: radial-gradient(circle at top, #fbf8f2, #f1eee7 60%);
+        color: var(--ink);
+      }
+      header {
+        padding: 16px 20px 8px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #suggestions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .rule-button {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        padding: 6px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .rule-button.active {
+        background: var(--accent-2);
+        border-color: var(--accent);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      #meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      #remote-badge {
+        background: #ffe6e0;
+        color: #9c2d1f;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 600;
+      }
+      main {
+        padding: 16px 20px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .pane {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+      }
+      .pane h3 {
+        margin: 0 0 8px 0;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+        font-size: 12px;
+      }
+      #diff {
+        grid-column: 1 / -1;
+      }
+      #actions {
+        padding: 12px 20px 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      button.action {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div id="suggestions"></div>
+      <div id="meta">
+        <label>
+          <input type="checkbox" id="autoAccept" />
+          Always auto-accept for this rule
+        </label>
+        <span id="remote-badge" hidden>Uses remote model</span>
+      </div>
+    </header>
+    <main>
+      <section class="pane">
+        <h3>Before</h3>
+        <pre id="before"></pre>
+      </section>
+      <section class="pane">
+        <h3>After</h3>
+        <pre id="after"></pre>
+      </section>
+      <section class="pane" id="diff">
+        <h3>Diff</h3>
+        <pre id="diffText"></pre>
+      </section>
+    </main>
+    <div id="actions">
+      <button class="action" id="copy">Copy</button>
+      <button class="action primary" id="paste">Paste</button>
+      <button class="action" id="cancel">Cancel</button>
+    </div>
+    <script>
+      const state = {
+        rules: [],
+        selectedRuleId: null,
+        before: "",
+        after: "",
+        diff: "",
+      };
+
+      function render() {
+        const suggestions = document.getElementById("suggestions");
+        suggestions.innerHTML = "";
+        state.rules.forEach((rule) => {
+          const btn = document.createElement("button");
+          btn.className = "rule-button" + (rule.id === state.selectedRuleId ? " active" : "");
+          btn.textContent = rule.name;
+          btn.onclick = () => {
+            window.ipc.postMessage(JSON.stringify({ type: "select_rule", id: rule.id }));
+          };
+          suggestions.appendChild(btn);
+        });
+
+        const selected = state.rules.find((rule) => rule.id === state.selectedRuleId);
+        const autoAccept = document.getElementById("autoAccept");
+        autoAccept.checked = selected ? selected.auto_accept : false;
+        autoAccept.onchange = (event) => {
+          if (!selected) return;
+          window.ipc.postMessage(
+            JSON.stringify({ type: "toggle_auto_accept", id: selected.id, value: event.target.checked })
+          );
+        };
+
+        const badge = document.getElementById("remote-badge");
+        badge.hidden = !(selected && selected.uses_remote);
+
+        document.getElementById("before").textContent = state.before || "";
+        document.getElementById("after").textContent = state.after || "";
+        document.getElementById("diffText").textContent = state.diff || "";
+      }
+
+      window.__SET_STATE__ = (next) => {
+        state.rules = next.rules || [];
+        state.selectedRuleId = next.selectedRuleId || (state.rules[0] && state.rules[0].id);
+        state.before = next.before || "";
+        state.after = next.after || "";
+        state.diff = next.diff || "";
+        render();
+      };
+
+      document.getElementById("paste").onclick = () =>
+        window.ipc.postMessage(JSON.stringify({ type: "paste" }));
+      document.getElementById("copy").onclick = () =>
+        window.ipc.postMessage(JSON.stringify({ type: "copy" }));
+      document.getElementById("cancel").onclick = () =>
+        window.ipc.postMessage(JSON.stringify({ type: "cancel" }));
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          window.ipc.postMessage(JSON.stringify({ type: "cancel" }));
+        }
+        if (event.metaKey && event.key === "Enter") {
+          event.preventDefault();
+          window.ipc.postMessage(JSON.stringify({ type: "paste" }));
+        }
+      });
+    </script>
+  </body>
+</html>

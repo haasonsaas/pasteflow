@@ -48,10 +48,6 @@ pub struct Suggestion {
 }
 
 impl Rule {
-    pub fn is_llm(&self) -> bool {
-        self.llm.is_some() && self.transform.is_none()
-    }
-
     pub fn transform_kind(&self) -> Option<TransformKind> {
         self.transform
     }
@@ -99,4 +95,3 @@ pub fn suggest_rules(rules: &[Rule], ctx: &MatchContext, max: usize) -> Vec<Sugg
     suggestions.truncate(max);
     suggestions
 }
-

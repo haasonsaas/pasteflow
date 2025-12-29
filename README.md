@@ -18,6 +18,10 @@ cargo run --release
 
 The app runs in the menu bar. Use the hotkey to open the diff panel.
 
+## Notes
+- Pasteflow simulates `Cmd+V` after copying the transformed text; macOS may prompt for Accessibility permission.
+- LLM rules are supported in config but are off by default and require explicit per-rule opt-in.
+
 ## Config
 Pasteflow loads `~/.config/pasteflow/config.toml`. If it doesn't exist, the app will create it from the bundled defaults.
 
@@ -42,4 +46,3 @@ apps = ["Terminal", "Visual Studio Code"]
 
 ## Status
 This is an early MVP. macOS-only for now. Windows parity is planned after v1 proves the model.
-
