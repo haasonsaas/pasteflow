@@ -51,6 +51,10 @@ enum IpcMessage {
     SelectRule { id: String },
     ToggleAutoAccept { id: String, value: bool },
     TogglePinned { id: String, value: bool },
+    UpdateRuleDescription { id: String, value: String },
+    UpdateHotkeyCombo { combo: String },
+    UpdateHotkeyApp { app: String, combo: String },
+    RemoveHotkeyApp { app: String },
     UpdateSearch { value: String },
     RequestConfig,
     SaveConfig { raw: String },
@@ -78,8 +82,30 @@ struct UiState {
     active_app: Option<String>,
     content_types: Vec<String>,
     search_query: Option<String>,
+    config: UiConfigState,
     config_text: Option<String>,
     config_error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UiConfigState {
+    hotkey_combo: String,
+    hotkey_apps: Vec<UiHotkeyApp>,
+    rules: Vec<UiRuleConfig>,
+}
+
+#[derive(Debug, Serialize)]
+struct UiHotkeyApp {
+    app: String,
+    combo: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UiRuleConfig {
+    id: String,
+    name: String,
+    description: String,
+    pinned: bool,
 }
 
 struct TrayHandle {
@@ -317,7 +343,7 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
         IpcMessage::ToggleAutoAccept { id, value } => {
             if let Some(rule) = state.cfg.rules.iter_mut().find(|rule| rule.id == id) {
                 rule.auto_accept = value;
-                let _ = config::save(&state.cfg);
+                persist_config(state);
             }
             refresh_preview(state);
             send_state(state, webview);
@@ -325,10 +351,51 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
         IpcMessage::TogglePinned { id, value } => {
             if let Some(rule) = state.cfg.rules.iter_mut().find(|rule| rule.id == id) {
                 rule.pinned = value;
-                let _ = config::save(&state.cfg);
+                persist_config(state);
             }
             rebuild_suggestions(state);
             refresh_preview(state);
+            send_state(state, webview);
+        }
+        IpcMessage::UpdateRuleDescription { id, value } => {
+            if let Some(rule) = state.cfg.rules.iter_mut().find(|rule| rule.id == id) {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    rule.description = None;
+                } else {
+                    rule.description = Some(trimmed);
+                }
+                persist_config(state);
+            }
+            send_state(state, webview);
+        }
+        IpcMessage::UpdateHotkeyCombo { combo } => {
+            let trimmed = combo.trim().to_string();
+            if !trimmed.is_empty() {
+                state.cfg.hotkey.combo = trimmed;
+                persist_config(state);
+            }
+            send_state(state, webview);
+        }
+        IpcMessage::UpdateHotkeyApp { app, combo } => {
+            let app_trimmed = app.trim().to_string();
+            let combo_trimmed = combo.trim().to_string();
+            if !app_trimmed.is_empty() {
+                if combo_trimmed.is_empty() {
+                    state.cfg.hotkey.apps.remove(&app_trimmed);
+                } else {
+                    state.cfg
+                        .hotkey
+                        .apps
+                        .insert(app_trimmed, combo_trimmed);
+                }
+                persist_config(state);
+            }
+            send_state(state, webview);
+        }
+        IpcMessage::RemoveHotkeyApp { app } => {
+            state.cfg.hotkey.apps.remove(app.trim());
+            persist_config(state);
             send_state(state, webview);
         }
         IpcMessage::UpdateSearch { value } => {
@@ -455,6 +522,7 @@ fn send_state(state: &AppState, webview: &WebView) {
         active_app: state.panel.active_app.clone(),
         content_types,
         search_query: state.panel.search_query.clone(),
+        config: build_ui_config_state(&state.cfg),
         config_text: state.config_text.clone(),
         config_error: state.config_error.clone(),
     };
@@ -462,6 +530,36 @@ fn send_state(state: &AppState, webview: &WebView) {
     if let Ok(payload) = serde_json::to_string(&ui_state) {
         let script = format!("window.__SET_STATE__({});", payload);
         let _ = webview.evaluate_script(&script);
+    }
+}
+
+fn build_ui_config_state(cfg: &config::Config) -> UiConfigState {
+    let mut hotkey_apps: Vec<UiHotkeyApp> = cfg
+        .hotkey
+        .apps
+        .iter()
+        .map(|(app, combo)| UiHotkeyApp {
+            app: app.clone(),
+            combo: combo.clone(),
+        })
+        .collect();
+    hotkey_apps.sort_by(|a, b| a.app.to_lowercase().cmp(&b.app.to_lowercase()));
+
+    let rules = cfg
+        .rules
+        .iter()
+        .map(|rule| UiRuleConfig {
+            id: rule.id.clone(),
+            name: rule.name.clone(),
+            description: rule.description.clone().unwrap_or_default(),
+            pinned: rule.pinned,
+        })
+        .collect();
+
+    UiConfigState {
+        hotkey_combo: cfg.hotkey.combo.clone(),
+        hotkey_apps,
+        rules,
     }
 }
 
@@ -573,7 +671,19 @@ fn update_ui_prefs(state: &mut AppState, search: Option<String>, selected: Optio
     if let Some(id) = selected {
         entry.selected_rule_id = Some(id);
     }
-    let _ = config::save(&state.cfg);
+    persist_config(state);
+}
+
+fn persist_config(state: &mut AppState) {
+    match config::save(&state.cfg) {
+        Ok(_) => {
+            state.config_error = None;
+            state.config_text = config::load_raw().ok();
+        }
+        Err(err) => {
+            state.config_error = Some(err.to_string());
+        }
+    }
 }
 
 fn active_app_name() -> Option<String> {

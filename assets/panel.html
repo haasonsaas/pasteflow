@@ -189,6 +189,64 @@
         flex-direction: column;
         gap: 8px;
       }
+      .config-section {
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .config-section:first-of-type {
+        border-top: none;
+        padding-top: 0;
+      }
+      .config-row {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .config-input {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 12px;
+        background: #fff;
+      }
+      .config-note {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .hotkey-list,
+      .rule-editor-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hotkey-item,
+      .rule-item {
+        display: grid;
+        grid-template-columns: 160px 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+      .rule-item {
+        grid-template-columns: 180px 1fr auto;
+      }
+      .remove-btn {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px 8px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      #configDirtyNotice {
+        color: #9c2d1f;
+        font-size: 11px;
+      }
       #configPanel.visible {
         display: flex;
       }
@@ -294,12 +352,34 @@
     </main>
     <section id="configPanel">
       <h3>Config (TOML)</h3>
+      <div id="configDirtyNotice" hidden>Raw editor has unsaved changes. UI controls are disabled.</div>
+      <div class="config-section">
+        <strong>Hotkeys</strong>
+        <div class="config-note">Changes apply after restart.</div>
+        <div class="config-row">
+          <span>Global hotkey</span>
+          <input class="config-input" id="hotkeyCombo" placeholder="Cmd+Shift+V" />
+        </div>
+        <div class="hotkey-list" id="hotkeyList"></div>
+        <div class="hotkey-item">
+          <input class="config-input" id="hotkeyAppInput" placeholder="App name (e.g. Slack)" />
+          <input class="config-input" id="hotkeyComboInput" placeholder="Cmd+Shift+P" />
+          <button class="remove-btn" id="hotkeyAddBtn">Add</button>
+        </div>
+      </div>
+      <div class="config-section">
+        <strong>Rules</strong>
+        <div class="rule-editor-list" id="ruleEditorList"></div>
+      </div>
+      <div class="config-section">
+        <strong>Raw TOML</strong>
       <textarea id="configText" spellcheck="false"></textarea>
       <div id="configError"></div>
       <div id="configActions">
         <button class="action" id="configReload">Reload</button>
         <button class="action" id="configClose">Close</button>
         <button class="action primary" id="configSave">Save</button>
+      </div>
       </div>
     </section>
     <div id="actions">
@@ -317,6 +397,7 @@
         diff: "",
         activeApp: null,
         contentTypes: [],
+        config: { hotkey_combo: "", hotkey_apps: [], rules: [] },
         configText: null,
         configError: null,
       };
@@ -328,6 +409,13 @@
       const searchInput = document.getElementById("ruleSearch");
       const configPanel = document.getElementById("configPanel");
       const configText = document.getElementById("configText");
+      const hotkeyComboInput = document.getElementById("hotkeyCombo");
+      const hotkeyList = document.getElementById("hotkeyList");
+      const hotkeyAppInput = document.getElementById("hotkeyAppInput");
+      const hotkeyComboAddInput = document.getElementById("hotkeyComboInput");
+      const hotkeyAddBtn = document.getElementById("hotkeyAddBtn");
+      const ruleEditorList = document.getElementById("ruleEditorList");
+      const configDirtyNotice = document.getElementById("configDirtyNotice");
 
       function visibleRules() {
         const list = searchQuery.trim()
@@ -444,10 +532,108 @@
 
       function renderConfig() {
         configPanel.classList.toggle("visible", configOpen);
+        configDirtyNotice.hidden = !configDirty;
         if (configOpen && state.configText && !configDirty) {
           configText.value = state.configText;
         }
         document.getElementById("configError").textContent = state.configError || "";
+
+        const disabled = configDirty;
+        hotkeyComboInput.disabled = disabled;
+        hotkeyAppInput.disabled = disabled;
+        hotkeyComboAddInput.disabled = disabled;
+        hotkeyAddBtn.disabled = disabled;
+
+        hotkeyComboInput.value = state.config.hotkey_combo || "";
+        hotkeyComboInput.onchange = (event) => {
+          if (disabled) return;
+          window.ipc.postMessage(JSON.stringify({ type: "update_hotkey_combo", combo: event.target.value }));
+        };
+
+        hotkeyList.innerHTML = "";
+        (state.config.hotkey_apps || []).forEach((entry) => {
+          const row = document.createElement("div");
+          row.className = "hotkey-item";
+
+          const appLabel = document.createElement("input");
+          appLabel.className = "config-input";
+          appLabel.value = entry.app;
+          appLabel.disabled = true;
+
+          const comboInput = document.createElement("input");
+          comboInput.className = "config-input";
+          comboInput.value = entry.combo;
+          comboInput.disabled = disabled;
+          comboInput.onchange = (event) => {
+            if (disabled) return;
+            window.ipc.postMessage(
+              JSON.stringify({ type: "update_hotkey_app", app: entry.app, combo: event.target.value })
+            );
+          };
+
+          const removeBtn = document.createElement("button");
+          removeBtn.className = "remove-btn";
+          removeBtn.textContent = "Remove";
+          removeBtn.disabled = disabled;
+          removeBtn.onclick = () => {
+            if (disabled) return;
+            window.ipc.postMessage(JSON.stringify({ type: "remove_hotkey_app", app: entry.app }));
+          };
+
+          row.appendChild(appLabel);
+          row.appendChild(comboInput);
+          row.appendChild(removeBtn);
+          hotkeyList.appendChild(row);
+        });
+
+        hotkeyAddBtn.onclick = () => {
+          if (disabled) return;
+          const app = hotkeyAppInput.value.trim();
+          const combo = hotkeyComboAddInput.value.trim();
+          if (!app || !combo) return;
+          window.ipc.postMessage(JSON.stringify({ type: "update_hotkey_app", app, combo }));
+          hotkeyAppInput.value = "";
+          hotkeyComboAddInput.value = "";
+        };
+
+        ruleEditorList.innerHTML = "";
+        (state.config.rules || []).forEach((rule) => {
+          const row = document.createElement("div");
+          row.className = "rule-item";
+
+          const name = document.createElement("div");
+          name.textContent = rule.name;
+
+          const descInput = document.createElement("input");
+          descInput.className = "config-input";
+          descInput.value = rule.description || "";
+          descInput.disabled = disabled;
+          descInput.onchange = (event) => {
+            if (disabled) return;
+            window.ipc.postMessage(
+              JSON.stringify({ type: "update_rule_description", id: rule.id, value: event.target.value })
+            );
+          };
+
+          const pinLabel = document.createElement("label");
+          const pinInput = document.createElement("input");
+          pinInput.type = "checkbox";
+          pinInput.checked = !!rule.pinned;
+          pinInput.disabled = disabled;
+          pinInput.onchange = (event) => {
+            if (disabled) return;
+            window.ipc.postMessage(
+              JSON.stringify({ type: "toggle_pinned", id: rule.id, value: event.target.checked })
+            );
+          };
+          pinLabel.appendChild(pinInput);
+          pinLabel.appendChild(document.createTextNode(" Pin"));
+
+          row.appendChild(name);
+          row.appendChild(descInput);
+          row.appendChild(pinLabel);
+          ruleEditorList.appendChild(row);
+        });
       }
 
       function render() {
@@ -469,6 +655,7 @@
         state.diff = next.diff || "";
         state.activeApp = next.active_app || null;
         state.contentTypes = next.content_types || [];
+        state.config = next.config || state.config;
         if (!document.activeElement || document.activeElement !== searchInput) {
           searchQuery = (next.search_query || "").toLowerCase();
           searchInput.value = searchQuery;

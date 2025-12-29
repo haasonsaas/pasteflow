@@ -26,6 +26,7 @@ The app runs in the menu bar. Use the hotkey to open the diff panel.
 
 ## In-app config editor
 Open **Edit config** to view and edit the TOML config in-app. Changes are validated before saving.
+You can also edit rule descriptions, pinned flags, and per-app hotkeys directly in the panel.
 
 ## Rule info + sticky state
 - Rule info panel shows transform, match hints, and flags for the selected rule.
