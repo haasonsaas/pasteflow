@@ -2,6 +2,7 @@ use crate::config;
 use crate::detect;
 use crate::diff;
 use crate::rules::{MatchContext, Rule, Suggestion};
+use crate::transforms::TransformKind;
 use arboard::Clipboard;
 use enigo::{Enigo, Key, KeyboardControllable};
 use global_hotkey::{
@@ -26,6 +27,8 @@ struct PanelState {
     diff: String,
     active_app: Option<String>,
     content_types: Vec<crate::detect::ContentType>,
+    active_app_key: String,
+    search_query: Option<String>,
 }
 
 struct AppState {
@@ -46,6 +49,7 @@ enum IpcMessage {
     Cancel,
     SelectRule { id: String },
     ToggleAutoAccept { id: String, value: bool },
+    UpdateSearch { value: String },
     RequestConfig,
     SaveConfig { raw: String },
 }
@@ -56,6 +60,8 @@ struct UiRule {
     name: String,
     auto_accept: bool,
     uses_remote: bool,
+    detail: String,
+    match_hint: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,6 +74,7 @@ struct UiState {
     selected_rule_id: Option<String>,
     active_app: Option<String>,
     content_types: Vec<String>,
+    search_query: Option<String>,
     config_text: Option<String>,
     config_error: Option<String>,
 }
@@ -102,6 +109,8 @@ pub fn run() -> AppResult<()> {
             diff: String::new(),
             active_app: None,
             content_types: Vec::new(),
+            active_app_key: "global".to_string(),
+            search_query: None,
         },
         config_text: None,
         config_error: None,
@@ -222,6 +231,7 @@ fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &We
     let text = state.clipboard.get_text().unwrap_or_default();
     let content_types = detect::detect_content_types(&text);
     let active_app = active_app_name();
+    let app_key = active_app.clone().unwrap_or_else(|| "global".to_string());
     let ctx = MatchContext {
         text: text.clone(),
         content_types: content_types.clone(),
@@ -230,12 +240,34 @@ fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &We
     state.suggestions =
         crate::rules::suggest_rules(&state.cfg.rules, &ctx, state.cfg.ui.suggestions);
     state.selected_rule_id = state
-        .suggestions
-        .first()
-        .map(|suggestion| suggestion.rule.id.clone());
+        .cfg
+        .ui_state
+        .get(&app_key)
+        .and_then(|prefs| prefs.selected_rule_id.clone());
+    if state.selected_rule_id.is_none() {
+        state.selected_rule_id = state
+            .suggestions
+            .first()
+            .map(|suggestion| suggestion.rule.id.clone());
+    }
     state.panel.input = text;
     state.panel.active_app = active_app;
     state.panel.content_types = content_types;
+    state.panel.active_app_key = app_key.clone();
+    state.panel.search_query = state
+        .cfg
+        .ui_state
+        .get(&app_key)
+        .and_then(|prefs| prefs.search.clone());
+    if let Some(selected) = &state.selected_rule_id {
+        if state.cfg.rules.iter().all(|rule| &rule.id != selected) {
+            state.selected_rule_id = state
+                .suggestions
+                .first()
+                .map(|suggestion| suggestion.rule.id.clone());
+            update_ui_prefs(state, None, state.selected_rule_id.clone());
+        }
+    }
     refresh_preview(state);
 
     if let Some(rule) = selected_rule(state) {
@@ -266,6 +298,7 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
         }
         IpcMessage::SelectRule { id } => {
             state.selected_rule_id = Some(id);
+            update_ui_prefs(state, None, state.selected_rule_id.clone());
             refresh_preview(state);
             send_state(state, webview);
         }
@@ -275,6 +308,10 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
                 let _ = config::save(&state.cfg);
             }
             refresh_preview(state);
+            send_state(state, webview);
+        }
+        IpcMessage::UpdateSearch { value } => {
+            update_ui_prefs(state, Some(value), None);
             send_state(state, webview);
         }
         IpcMessage::RequestConfig => {
@@ -332,6 +369,9 @@ fn rebuild_suggestions(state: &mut AppState) {
     };
     state.suggestions =
         crate::rules::suggest_rules(&state.cfg.rules, &ctx, state.cfg.ui.suggestions);
+    if let Some(prefs) = state.cfg.ui_state.get(&state.panel.active_app_key) {
+        state.panel.search_query = prefs.search.clone();
+    }
     if let Some(id) = &state.selected_rule_id {
         if state.cfg.rules.iter().all(|rule| &rule.id != id) {
             state.selected_rule_id = state
@@ -372,25 +412,10 @@ fn send_state(state: &AppState, webview: &WebView) {
     let suggestions: Vec<UiRule> = state
         .suggestions
         .iter()
-        .map(|suggestion| UiRule {
-            id: suggestion.rule.id.clone(),
-            name: suggestion.rule.name.clone(),
-            auto_accept: suggestion.rule.auto_accept,
-            uses_remote: suggestion.rule.llm.is_some(),
-        })
+        .map(|suggestion| ui_rule(&suggestion.rule))
         .collect();
 
-    let all_rules: Vec<UiRule> = state
-        .cfg
-        .rules
-        .iter()
-        .map(|rule| UiRule {
-            id: rule.id.clone(),
-            name: rule.name.clone(),
-            auto_accept: rule.auto_accept,
-            uses_remote: rule.llm.is_some(),
-        })
-        .collect();
+    let all_rules: Vec<UiRule> = state.cfg.rules.iter().map(ui_rule).collect();
 
     let content_types = state
         .panel
@@ -408,6 +433,7 @@ fn send_state(state: &AppState, webview: &WebView) {
         selected_rule_id: state.selected_rule_id.clone(),
         active_app: state.panel.active_app.clone(),
         content_types,
+        search_query: state.panel.search_query.clone(),
         config_text: state.config_text.clone(),
         config_error: state.config_error.clone(),
     };
@@ -438,6 +464,94 @@ fn content_type_label(content_type: &crate::detect::ContentType) -> String {
         crate::detect::ContentType::List => "list".to_string(),
         crate::detect::ContentType::Timestamp => "timestamp".to_string(),
     }
+}
+
+fn ui_rule(rule: &Rule) -> UiRule {
+    UiRule {
+        id: rule.id.clone(),
+        name: rule.name.clone(),
+        auto_accept: rule.auto_accept,
+        uses_remote: rule.llm.is_some(),
+        detail: rule_detail(rule),
+        match_hint: rule_match_hint(rule),
+    }
+}
+
+fn rule_detail(rule: &Rule) -> String {
+    let mut base = if let Some(kind) = rule.transform_kind() {
+        format!("Transform: {}", transform_label(kind))
+    } else if let Some(llm) = &rule.llm {
+        format!("LLM: {}/{}", llm.provider, llm.model)
+    } else {
+        "Transform: none".to_string()
+    };
+    if let Some(desc) = &rule.description {
+        if !desc.trim().is_empty() {
+            base.push_str(" - ");
+            base.push_str(desc.trim());
+        }
+    }
+    base
+}
+
+fn rule_match_hint(rule: &Rule) -> String {
+    let mut parts = Vec::new();
+    if let Some(types) = &rule.matchers.content_types {
+        let list = types
+            .iter()
+            .map(content_type_label)
+            .collect::<Vec<_>>()
+            .join(", ");
+        parts.push(format!("types: {}", list));
+    }
+    if let Some(apps) = &rule.matchers.apps {
+        let list = apps.join(", ");
+        parts.push(format!("apps: {}", list));
+    }
+    if let Some(regex) = &rule.matchers.regex {
+        let trimmed = if regex.len() > 60 {
+            format!("{}...", &regex[..60])
+        } else {
+            regex.clone()
+        };
+        parts.push(format!("regex: {}", trimmed));
+    }
+    if parts.is_empty() {
+        "Match: any".to_string()
+    } else {
+        format!("Match: {}", parts.join(" | "))
+    }
+}
+
+fn transform_label(kind: TransformKind) -> &'static str {
+    match kind {
+        TransformKind::JsonPrettify => "json_prettify",
+        TransformKind::JsonMinify => "json_minify",
+        TransformKind::JsonToYaml => "json_to_yaml",
+        TransformKind::YamlToJson => "yaml_to_json",
+        TransformKind::StripFormatting => "strip_formatting",
+        TransformKind::BulletNormalize => "bullet_normalize",
+        TransformKind::TimestampNormalize => "timestamp_normalize",
+    }
+}
+
+fn update_ui_prefs(state: &mut AppState, search: Option<String>, selected: Option<String>) {
+    let key = state.panel.active_app_key.clone();
+    let entry = state.cfg.ui_state.entry(key).or_default();
+    if let Some(value) = search {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            entry.search = None;
+            state.panel.search_query = None;
+        } else {
+            entry.search = Some(trimmed.clone());
+            state.panel.search_query = Some(trimmed);
+        }
+    }
+    if let Some(id) = selected {
+        entry.selected_rule_id = Some(id);
+    }
+    let _ = config::save(&state.cfg);
 }
 
 fn active_app_name() -> Option<String> {

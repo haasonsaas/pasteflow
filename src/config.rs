@@ -1,5 +1,6 @@
 use crate::rules::Rule;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -11,6 +12,8 @@ pub struct Config {
     pub ui: UiConfig,
     #[serde(default)]
     pub rules: Vec<Rule>,
+    #[serde(default)]
+    pub ui_state: HashMap<String, UiAppState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,8 +46,17 @@ impl Default for Config {
             hotkey: HotkeyConfig::default(),
             ui: UiConfig::default(),
             rules: Vec::new(),
+            ui_state: HashMap::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UiAppState {
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub selected_rule_id: Option<String>,
 }
 
 #[derive(thiserror::Error, Debug)]

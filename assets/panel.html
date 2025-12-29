@@ -67,6 +67,38 @@
         background: var(--panel);
         min-width: 220px;
       }
+      .rule-badges {
+        display: inline-flex;
+        gap: 4px;
+        margin-left: 6px;
+      }
+      .rule-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      #tooltip {
+        position: fixed;
+        z-index: 9999;
+        pointer-events: none;
+        background: #fffdf8;
+        border: 1px solid var(--border);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 11px;
+        color: var(--ink);
+        white-space: pre-wrap;
+        max-width: 320px;
+        display: none;
+      }
       #configToggle {
         border: 1px solid var(--border);
         background: var(--panel);
@@ -209,8 +241,8 @@
         </div>
       </div>
       <div id="badges">
-        <span class="badge" id="appBadge">App: —</span>
-        <span class="badge" id="typeBadge">Types: —</span>
+        <span class="badge" id="appBadge">App: -</span>
+        <span class="badge" id="typeBadge">Types: -</span>
       </div>
       <div id="meta">
         <label>
@@ -249,6 +281,7 @@
       <button class="action primary" id="paste">Paste</button>
       <button class="action" id="cancel">Cancel</button>
     </div>
+    <div id="tooltip"></div>
     <script>
       const state = {
         suggestions: [],
@@ -270,6 +303,7 @@
       const searchInput = document.getElementById("ruleSearch");
       const configPanel = document.getElementById("configPanel");
       const configText = document.getElementById("configText");
+      const tooltip = document.getElementById("tooltip");
 
       function visibleRules() {
         const list = searchQuery.trim()
@@ -292,8 +326,34 @@
         list.forEach((rule) => {
           const btn = document.createElement("button");
           btn.className = "rule-button" + (rule.id === state.selectedRuleId ? " active" : "");
-          btn.textContent = rule.name;
+          const label = document.createElement("span");
+          label.textContent = rule.name;
+          btn.appendChild(label);
+
+          const badges = document.createElement("span");
+          badges.className = "rule-badges";
+          if (rule.auto_accept) {
+            const badge = document.createElement("span");
+            badge.className = "rule-badge";
+            badge.textContent = "A";
+            badge.title = "Auto-accept";
+            badges.appendChild(badge);
+          }
+          if (rule.uses_remote) {
+            const badge = document.createElement("span");
+            badge.className = "rule-badge";
+            badge.textContent = "R";
+            badge.title = "Remote model";
+            badges.appendChild(badge);
+          }
+          if (badges.children.length) {
+            btn.appendChild(badges);
+          }
+
           btn.onclick = () => selectRule(rule.id);
+          btn.onmouseenter = (event) => showTooltip(event, rule);
+          btn.onmousemove = (event) => positionTooltip(event);
+          btn.onmouseleave = () => hideTooltip();
           suggestions.appendChild(btn);
         });
       }
@@ -312,8 +372,8 @@
         const badge = document.getElementById("remote-badge");
         badge.hidden = !(selected && selected.uses_remote);
 
-        document.getElementById("appBadge").textContent = `App: ${state.activeApp || "—"}`;
-        const types = state.contentTypes.length ? state.contentTypes.join(", ") : "—";
+        document.getElementById("appBadge").textContent = `App: ${state.activeApp || "-"}`;
+        const types = state.contentTypes.length ? state.contentTypes.join(", ") : "-";
         document.getElementById("typeBadge").textContent = `Types: ${types}`;
       }
 
@@ -343,6 +403,10 @@
         state.diff = next.diff || "";
         state.activeApp = next.active_app || null;
         state.contentTypes = next.content_types || [];
+        if (!document.activeElement || document.activeElement !== searchInput) {
+          searchQuery = (next.search_query || "").toLowerCase();
+          searchInput.value = searchQuery;
+        }
         state.configText = next.config_text || state.configText;
         state.configError = next.config_error || null;
         render();
@@ -395,6 +459,7 @@
       searchInput.addEventListener("input", (event) => {
         searchQuery = event.target.value.toLowerCase();
         renderRules();
+        window.ipc.postMessage(JSON.stringify({ type: "update_search", value: searchQuery }));
       });
 
       window.addEventListener("keydown", (event) => {
@@ -430,6 +495,7 @@
             searchQuery = "";
             searchInput.value = "";
             renderRules();
+            window.ipc.postMessage(JSON.stringify({ type: "update_search", value: "" }));
             return;
           }
           window.ipc.postMessage(JSON.stringify({ type: "cancel" }));
@@ -440,6 +506,30 @@
           window.ipc.postMessage(JSON.stringify({ type: "paste" }));
         }
       });
+
+      function showTooltip(event, rule) {
+        if (!rule) return;
+        const detail = rule.detail || "";
+        const match = rule.match_hint || "";
+        const text = [detail, match].filter(Boolean).join("\\n");
+        if (!text) return;
+        tooltip.textContent = text;
+        tooltip.style.display = "block";
+        positionTooltip(event);
+      }
+
+      function positionTooltip(event) {
+        if (tooltip.style.display !== "block") return;
+        const offset = 12;
+        const x = Math.min(window.innerWidth - 340, event.clientX + offset);
+        const y = Math.min(window.innerHeight - 120, event.clientY + offset);
+        tooltip.style.left = `${Math.max(12, x)}px`;
+        tooltip.style.top = `${Math.max(12, y)}px`;
+      }
+
+      function hideTooltip() {
+        tooltip.style.display = "none";
+      }
     </script>
   </body>
 </html>

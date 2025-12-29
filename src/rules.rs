@@ -8,6 +8,8 @@ pub struct Rule {
     pub id: String,
     pub name: String,
     #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
     pub transform: Option<TransformKind>,
     #[serde(default)]
     pub llm: Option<LlmRule>,
