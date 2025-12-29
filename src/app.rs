@@ -10,6 +10,7 @@ use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::error::Error;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
@@ -60,6 +61,7 @@ struct UiRule {
     name: String,
     auto_accept: bool,
     uses_remote: bool,
+    pinned: bool,
     detail: String,
     match_hint: String,
 }
@@ -140,8 +142,17 @@ pub fn run() -> AppResult<()> {
     let tray = build_tray()?;
 
     let hotkey_manager = GlobalHotKeyManager::new()?;
-    let hotkey = parse_hotkey(&state.cfg.hotkey.combo).unwrap_or_else(default_hotkey);
-    hotkey_manager.register(hotkey)?;
+    let mut registered = 0;
+    for combo in hotkey_combos(&state.cfg) {
+        if let Some(hotkey) = parse_hotkey(&combo) {
+            if hotkey_manager.register(hotkey).is_ok() {
+                registered += 1;
+            }
+        }
+    }
+    if registered == 0 {
+        return Err("no valid hotkeys registered".into());
+    }
 
     let hotkey_proxy = event_loop.create_proxy();
     std::thread::spawn(move || {
@@ -472,6 +483,7 @@ fn ui_rule(rule: &Rule) -> UiRule {
         name: rule.name.clone(),
         auto_accept: rule.auto_accept,
         uses_remote: rule.llm.is_some(),
+        pinned: rule.pinned,
         detail: rule_detail(rule),
         match_hint: rule_match_hint(rule),
     }
@@ -561,8 +573,17 @@ fn active_app_name() -> Option<String> {
     }
 }
 
-fn default_hotkey() -> HotKey {
-    HotKey::new(Some(Modifiers::META | Modifiers::SHIFT), Code::KeyV)
+fn hotkey_combos(cfg: &config::Config) -> Vec<String> {
+    let mut combos = Vec::new();
+    combos.push(cfg.hotkey.combo.clone());
+    for combo in cfg.hotkey.apps.values() {
+        combos.push(combo.clone());
+    }
+    let mut seen = HashSet::new();
+    combos
+        .into_iter()
+        .filter(|combo| seen.insert(combo.to_lowercase()))
+        .collect()
 }
 
 fn parse_hotkey(combo: &str) -> Option<HotKey> {

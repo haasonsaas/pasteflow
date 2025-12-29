@@ -10,6 +10,8 @@ pub struct Rule {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
     pub transform: Option<TransformKind>,
     #[serde(default)]
     pub llm: Option<LlmRule>,
@@ -79,6 +81,9 @@ impl Rule {
         }
         if score == 0 {
             score = 1;
+        }
+        if self.pinned {
+            score += 1000;
         }
         Some(score)
     }

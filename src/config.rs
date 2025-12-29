@@ -19,6 +19,8 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotkeyConfig {
     pub combo: String,
+    #[serde(default)]
+    pub apps: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +32,7 @@ impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
             combo: "Cmd+Shift+V".to_string(),
+            apps: HashMap::new(),
         }
     }
 }

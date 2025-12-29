@@ -2,6 +2,7 @@
 
 [hotkey]
 combo = "Cmd+Shift+V"
+# apps = { "Slack" = "Cmd+Shift+P", "Terminal" = "Cmd+Shift+K" }
 
 [ui]
 suggestions = 3
@@ -10,6 +11,7 @@ suggestions = 3
 id = "json_prettify"
 name = "JSON Prettify"
 description = "Pretty-print JSON with stable indentation."
+pinned = false
 transform = "json_prettify"
 auto_accept = false
 [rules.match]
@@ -19,6 +21,7 @@ content_types = ["json"]
 id = "json_minify"
 name = "JSON Minify"
 description = "Minify JSON into a single line."
+pinned = false
 transform = "json_minify"
 auto_accept = false
 [rules.match]
@@ -28,6 +31,7 @@ content_types = ["json"]
 id = "json_to_yaml"
 name = "JSON → YAML"
 description = "Convert JSON to YAML."
+pinned = false
 transform = "json_to_yaml"
 auto_accept = false
 [rules.match]
@@ -37,6 +41,7 @@ content_types = ["json"]
 id = "yaml_to_json"
 name = "YAML → JSON"
 description = "Convert YAML to pretty JSON."
+pinned = false
 transform = "yaml_to_json"
 auto_accept = false
 [rules.match]
@@ -46,6 +51,7 @@ content_types = ["yaml"]
 id = "strip_formatting"
 name = "Paste as Plain Text"
 description = "Strip formatting and normalize whitespace."
+pinned = false
 transform = "strip_formatting"
 auto_accept = false
 [rules.match]
@@ -55,6 +61,7 @@ content_types = ["text", "list", "json", "yaml"]
 id = "bullet_normalize"
 name = "Normalize Bullet List"
 description = "Normalize bullet markers and indentation."
+pinned = false
 transform = "bullet_normalize"
 auto_accept = false
 [rules.match]
@@ -64,6 +71,7 @@ content_types = ["list"]
 id = "timestamp_normalize"
 name = "Normalize Timestamp"
 description = "Normalize timestamps (epoch ↔ ISO-8601)."
+pinned = false
 transform = "timestamp_normalize"
 auto_accept = false
 [rules.match]

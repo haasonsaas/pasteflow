@@ -27,10 +27,17 @@ The app runs in the menu bar. Use the hotkey to open the diff panel.
 ## In-app config editor
 Open **Edit config** to view and edit the TOML config in-app. Changes are validated before saving.
 
-## Rule preview + sticky state
-- Hover a rule chip to see transform + match details.
-- Rule chips show `A` (auto-accept) and `R` (remote model) badges.
+## Rule info + sticky state
+- Rule info panel shows transform, match hints, and flags for the selected rule.
+- Rule chips show `P` (pinned), `A` (auto-accept), and `R` (remote model) badges.
 - Search query and selected rule are remembered per active app.
+
+## Pinned rules
+Set `pinned = true` on any rule to keep it at the top of suggestions (when it matches).
+
+## Per-app hotkeys
+You can register additional hotkeys per app. The app registers all combos on launch.
+Restart Pasteflow after changing hotkeys.
 
 ## Notes
 - Pasteflow simulates `Cmd+V` after copying the transformed text; macOS may prompt for Accessibility permission.
@@ -51,11 +58,20 @@ Example rule:
 [[rules]]
 id = "json_prettify"
 name = "JSON Prettify"
+description = "Pretty-print JSON with stable indentation."
+pinned = true
 transform = "json_prettify"
 auto_accept = false
 [rules.match]
 content_types = ["json"]
 apps = ["Terminal", "Visual Studio Code"]
+```
+
+Per-app hotkeys:
+```toml
+[hotkey]
+combo = "Cmd+Shift+V"
+apps = { "Slack" = "Cmd+Shift+P", "Terminal" = "Cmd+Shift+K" }
 ```
 
 ## Status
