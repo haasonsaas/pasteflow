@@ -43,9 +43,14 @@ You can register additional hotkeys per app. Changes apply immediately.
 ## Config editor upgrades
 - Live TOML validation with diff preview + Revert.
 - Hotkey conflict warnings are surfaced in the panel.
+- Match-strength sorting when searching rules.
+- Transform errors show as an inline banner instead of silently mutating output.
 
 ## Activity log
 The Recent panel shows the last 5 Paste/Copy actions with the rule used and a snippet.
+
+## Metrics
+Pasteflow shows before/after character + line counts and diff add/remove counts in the header.
 
 ## Notes
 - Pasteflow simulates `Cmd+V` after copying the transformed text; macOS may prompt for Accessibility permission.

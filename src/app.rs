@@ -27,6 +27,7 @@ struct PanelState {
     input: String,
     output: String,
     diff: String,
+    error: Option<String>,
     active_app: Option<String>,
     content_types: Vec<crate::detect::ContentType>,
     active_app_key: String,
@@ -98,6 +99,8 @@ struct UiState {
     config_draft_error: Option<String>,
     config_diff: Option<String>,
     history: Vec<UiHistoryItem>,
+    stats: UiStats,
+    error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +109,16 @@ struct UiConfigState {
     hotkey_apps: Vec<UiHotkeyApp>,
     rules: Vec<UiRuleConfig>,
     hotkey_warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UiStats {
+    before_chars: usize,
+    before_lines: usize,
+    after_chars: usize,
+    after_lines: usize,
+    diff_added: usize,
+    diff_removed: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -182,6 +195,7 @@ pub fn run() -> AppResult<()> {
             input: String::new(),
             output: String::new(),
             diff: String::new(),
+            error: None,
             active_app: None,
             content_types: Vec::new(),
             active_app_key: "global".to_string(),
@@ -510,13 +524,23 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
 
 fn refresh_preview(state: &mut AppState) {
     let input = state.panel.input.clone();
-    let output = if let Some(rule) = selected_rule(state) {
+    let result = if let Some(rule) = selected_rule(state) {
         apply_rule(rule, &input)
     } else {
-        input.clone()
+        Ok(input.clone())
     };
-    state.panel.output = output.clone();
-    state.panel.diff = diff::unified_diff(&input, &output);
+    match result {
+        Ok(output) => {
+            state.panel.output = output.clone();
+            state.panel.diff = diff::unified_diff(&input, &output);
+            state.panel.error = None;
+        }
+        Err(err) => {
+            state.panel.output = input.clone();
+            state.panel.diff = diff::unified_diff(&input, &input);
+            state.panel.error = Some(err);
+        }
+    }
 }
 
 fn rebuild_suggestions(state: &mut AppState) {
@@ -542,16 +566,16 @@ fn rebuild_suggestions(state: &mut AppState) {
     }
 }
 
-fn apply_rule(rule: &Rule, input: &str) -> String {
+fn apply_rule(rule: &Rule, input: &str) -> Result<String, String> {
     if let Some(kind) = rule.transform_kind() {
         match kind.apply(input) {
-            Ok(out) => out,
-            Err(err) => format!("Transform error: {}", err),
+            Ok(out) => Ok(out),
+            Err(err) => Err(format!("Transform error: {}", err)),
         }
     } else if rule.llm.is_some() {
-        "LLM rule is configured but not enabled in this MVP.".to_string()
+        Err("LLM rule is configured but not enabled in this MVP.".to_string())
     } else {
-        input.to_string()
+        Ok(input.to_string())
     }
 }
 
@@ -613,6 +637,8 @@ fn send_state(state: &AppState, webview: &WebView) {
         config_draft_error: state.config_draft_error.clone(),
         config_diff: state.config_diff.clone(),
         history: state.history.iter().map(ui_history_item).collect(),
+        stats: compute_stats(&state.panel),
+        error: state.panel.error.clone(),
     };
 
     if let Ok(payload) = serde_json::to_string(&ui_state) {
@@ -800,6 +826,47 @@ fn ui_history_item(item: &HistoryItem) -> UiHistoryItem {
         rule: item.rule.clone(),
         snippet: item.snippet.clone(),
     }
+}
+
+fn compute_stats(panel: &PanelState) -> UiStats {
+    let before_chars = panel.input.chars().count();
+    let after_chars = panel.output.chars().count();
+    let before_lines = if panel.input.is_empty() {
+        0
+    } else {
+        panel.input.lines().count()
+    };
+    let after_lines = if panel.output.is_empty() {
+        0
+    } else {
+        panel.output.lines().count()
+    };
+    let (diff_added, diff_removed) = diff_line_stats(&panel.diff);
+
+    UiStats {
+        before_chars,
+        before_lines,
+        after_chars,
+        after_lines,
+        diff_added,
+        diff_removed,
+    }
+}
+
+fn diff_line_stats(diff_text: &str) -> (usize, usize) {
+    let mut added = 0;
+    let mut removed = 0;
+    for line in diff_text.lines() {
+        if line.starts_with("+++") || line.starts_with("---") || line.starts_with("@@") {
+            continue;
+        }
+        if line.starts_with('+') {
+            added += 1;
+        } else if line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (added, removed)
 }
 
 fn update_ui_prefs(state: &mut AppState, search: Option<String>, selected: Option<String>) {

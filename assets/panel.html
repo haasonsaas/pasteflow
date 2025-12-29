@@ -125,6 +125,10 @@
         gap: 8px;
         flex-wrap: wrap;
       }
+      #metrics {
+        font-size: 11px;
+        color: var(--muted);
+      }
       .badge {
         border: 1px solid var(--border);
         background: var(--panel);
@@ -146,6 +150,16 @@
         padding: 2px 8px;
         border-radius: 999px;
         font-weight: 600;
+      }
+      #errorBanner {
+        margin: 8px 20px 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #f1c2b9;
+        background: #fff4f1;
+        color: #9c2d1f;
+        font-size: 12px;
+        display: none;
       }
       main {
         padding: 16px 20px;
@@ -191,6 +205,10 @@
       }
       #diff {
         grid-column: 1 / -1;
+      }
+      #ruleInfo,
+      #recentPanel {
+        grid-column: 3;
       }
       #configPanel {
         margin: 0 20px 16px;
@@ -370,6 +388,7 @@
         <span class="badge" id="appBadge">App: -</span>
         <span class="badge" id="typeBadge">Types: -</span>
       </div>
+      <div id="metrics"></div>
       <div id="meta">
         <label>
           <input type="checkbox" id="autoAccept" />
@@ -378,6 +397,7 @@
         <span id="remote-badge" hidden>Uses remote model</span>
       </div>
     </header>
+    <div id="errorBanner"></div>
     <main>
       <section class="pane">
         <h3>Before</h3>
@@ -398,6 +418,7 @@
         </div>
         <div class="rule-line" id="ruleInfoDetail"></div>
         <div class="rule-line" id="ruleInfoMatch"></div>
+        <div class="rule-line" id="ruleInfoScore"></div>
         <div class="rule-tags" id="ruleInfoTags"></div>
       </section>
       <section class="pane" id="recentPanel">
@@ -466,6 +487,8 @@
         configDraftError: null,
         configDiff: null,
         history: [],
+        stats: null,
+        error: null,
       };
 
       let searchQuery = "";
@@ -566,6 +589,7 @@
         document.getElementById("ruleInfoName").textContent = selected ? selected.name : "-";
         document.getElementById("ruleInfoDetail").textContent = selected ? selected.detail : "";
         document.getElementById("ruleInfoMatch").textContent = selected ? selected.match_hint : "";
+        document.getElementById("ruleInfoScore").textContent = selected ? `Score: ${selected.score}` : "";
         const pinToggle = document.getElementById("pinRule");
         pinToggle.checked = selected ? !!selected.pinned : false;
         pinToggle.disabled = !selected;
@@ -615,6 +639,10 @@
         document.getElementById("appBadge").textContent = `App: ${state.activeApp || "-"}`;
         const types = state.contentTypes.length ? state.contentTypes.join(", ") : "-";
         document.getElementById("typeBadge").textContent = `Types: ${types}`;
+        const metrics = state.stats
+          ? `Before ${state.stats.before_chars}c/${state.stats.before_lines}l · After ${state.stats.after_chars}c/${state.stats.after_lines}l · Δ +${state.stats.diff_added}/-${state.stats.diff_removed}`
+          : "";
+        document.getElementById("metrics").textContent = metrics;
       }
 
       function renderConfig() {
@@ -750,6 +778,14 @@
         renderMeta();
         renderRuleInfo();
         renderHistory();
+        const errorBanner = document.getElementById("errorBanner");
+        if (state.error) {
+          errorBanner.textContent = state.error;
+          errorBanner.style.display = "block";
+        } else {
+          errorBanner.textContent = "";
+          errorBanner.style.display = "none";
+        }
         const beforeEl = document.getElementById("before");
         const afterEl = document.getElementById("after");
         const diffEl = document.getElementById("diffText");
@@ -816,6 +852,8 @@
         state.contentTypes = next.content_types || [];
         state.config = next.config || state.config;
         state.history = next.history || state.history || [];
+        state.stats = next.stats || state.stats;
+        state.error = next.error || null;
         state.configDraftError = next.config_draft_error || null;
         state.configDiff = next.config_diff || null;
         configDirty = !!(state.configDiff && state.configDiff.trim().length);
@@ -934,6 +972,10 @@
         if (event.metaKey && event.key === "Enter") {
           event.preventDefault();
           window.ipc.postMessage(JSON.stringify({ type: "paste" }));
+        }
+        if (event.metaKey && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          window.ipc.postMessage(JSON.stringify({ type: "copy" }));
         }
       });
 
