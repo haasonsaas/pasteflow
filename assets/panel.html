@@ -99,6 +99,11 @@
         flex-wrap: wrap;
         gap: 6px;
       }
+      #ruleInfo .rule-controls {
+        margin: 6px 0 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
       #ruleInfo .rule-tag {
         border: 1px solid var(--border);
         border-radius: 999px;
@@ -272,6 +277,12 @@
       <section class="pane" id="ruleInfo">
         <h3>Rule Info</h3>
         <div class="rule-name" id="ruleInfoName">-</div>
+        <div class="rule-controls">
+          <label>
+            <input type="checkbox" id="pinRule" />
+            Pin this rule
+          </label>
+        </div>
         <div class="rule-line" id="ruleInfoDetail"></div>
         <div class="rule-line" id="ruleInfoMatch"></div>
         <div class="rule-tags" id="ruleInfoTags"></div>
@@ -380,6 +391,15 @@
         document.getElementById("ruleInfoName").textContent = selected ? selected.name : "-";
         document.getElementById("ruleInfoDetail").textContent = selected ? selected.detail : "";
         document.getElementById("ruleInfoMatch").textContent = selected ? selected.match_hint : "";
+        const pinToggle = document.getElementById("pinRule");
+        pinToggle.checked = selected ? !!selected.pinned : false;
+        pinToggle.disabled = !selected;
+        pinToggle.onchange = (event) => {
+          if (!selected) return;
+          window.ipc.postMessage(
+            JSON.stringify({ type: "toggle_pinned", id: selected.id, value: event.target.checked })
+          );
+        };
         const tags = document.getElementById("ruleInfoTags");
         tags.innerHTML = "";
         if (!selected) return;

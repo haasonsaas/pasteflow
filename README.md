@@ -33,7 +33,7 @@ Open **Edit config** to view and edit the TOML config in-app. Changes are valida
 - Search query and selected rule are remembered per active app.
 
 ## Pinned rules
-Set `pinned = true` on any rule to keep it at the top of suggestions (when it matches).
+Set `pinned = true` on any rule to keep it at the top of suggestions (when it matches), or toggle it in the Rule Info panel.
 
 ## Per-app hotkeys
 You can register additional hotkeys per app. The app registers all combos on launch.

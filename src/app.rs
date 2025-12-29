@@ -50,6 +50,7 @@ enum IpcMessage {
     Cancel,
     SelectRule { id: String },
     ToggleAutoAccept { id: String, value: bool },
+    TogglePinned { id: String, value: bool },
     UpdateSearch { value: String },
     RequestConfig,
     SaveConfig { raw: String },
@@ -318,6 +319,15 @@ fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &winit::window::Win
                 rule.auto_accept = value;
                 let _ = config::save(&state.cfg);
             }
+            refresh_preview(state);
+            send_state(state, webview);
+        }
+        IpcMessage::TogglePinned { id, value } => {
+            if let Some(rule) = state.cfg.rules.iter_mut().find(|rule| rule.id == id) {
+                rule.pinned = value;
+                let _ = config::save(&state.cfg);
+            }
+            rebuild_suggestions(state);
             refresh_preview(state);
             send_state(state, webview);
         }
