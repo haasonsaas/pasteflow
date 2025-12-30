@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 // Pre-compiled regexes for performance
 static BULLET_LIST_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*([-*•])\s+\S+").unwrap());
-static RELATIVE_NOW_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^now([+-])(\d+)([smhd])$").unwrap());
+static RELATIVE_NOW_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^now([+-])(\d+)([smhd])$").unwrap());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -50,7 +51,26 @@ fn is_yaml(input: &str) -> bool {
     if input.is_empty() {
         return false;
     }
-    serde_yaml::from_str::<serde_yaml::Value>(input).is_ok()
+    // YAML parser accepts almost anything as valid YAML (plain scalars)
+    // Require structural elements to avoid false positives on plain text
+    let has_structure = input.contains(':')
+        || input.starts_with('-')
+        || input.contains("\n-")
+        || input.contains('[')
+        || input.contains('{');
+    if !has_structure {
+        return false;
+    }
+    // Parse and ensure it's not just a plain scalar
+    match serde_yaml::from_str::<serde_yaml::Value>(input) {
+        Ok(value) => !matches!(
+            value,
+            serde_yaml::Value::String(_)
+                | serde_yaml::Value::Number(_)
+                | serde_yaml::Value::Bool(_)
+        ),
+        Err(_) => false,
+    }
 }
 
 fn is_bullet_list(input: &str) -> bool {

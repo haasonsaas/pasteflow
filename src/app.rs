@@ -183,7 +183,7 @@ type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 pub fn run() -> AppResult<()> {
     let cfg = config::load_or_init()?;
-    let clipboard = Clipboard::new().expect("clipboard available");
+    let clipboard = Clipboard::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
     let hotkey_manager = GlobalHotKeyManager::new()?;
 
     let mut state = AppState {
@@ -293,7 +293,7 @@ fn build_tray() -> AppResult<TrayHandle> {
     menu.append(&show_item).map_err(boxed)?;
     menu.append(&quit_item).map_err(boxed)?;
 
-    let icon = load_icon();
+    let icon = load_icon()?;
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("Pasteflow")
@@ -312,12 +312,14 @@ fn boxed<E: Error + Send + Sync + 'static>(err: E) -> Box<dyn Error + Send + Syn
     Box::new(err)
 }
 
-fn load_icon() -> tray_icon::Icon {
+fn load_icon() -> Result<tray_icon::Icon, Box<dyn Error + Send + Sync>> {
     let bytes = include_bytes!("../assets/icon.png");
-    let image = image::load_from_memory(bytes).expect("icon decode");
+    let image =
+        image::load_from_memory(bytes).map_err(|e| format!("Failed to decode icon: {}", e))?;
     let rgba = image.to_rgba8();
     let (width, height) = rgba.dimensions();
-    tray_icon::Icon::from_rgba(rgba.into_raw(), width, height).expect("icon rgba")
+    tray_icon::Icon::from_rgba(rgba.into_raw(), width, height)
+        .map_err(|e| format!("Failed to create icon: {}", e).into())
 }
 
 fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &WebView) {
@@ -689,9 +691,13 @@ fn apply_copy(state: &mut AppState) {
 
 fn apply_paste(state: &mut AppState) {
     apply_copy_internal(state, "Paste");
+    // Simulate Cmd+V to paste - enigo 0.1 doesn't return errors
+    // Small delays ensure key events are processed in order
     let mut enigo = Enigo::new();
     enigo.key_down(Key::Meta);
+    std::thread::sleep(std::time::Duration::from_millis(10));
     enigo.key_click(Key::Layout('v'));
+    std::thread::sleep(std::time::Duration::from_millis(10));
     enigo.key_up(Key::Meta);
 }
 

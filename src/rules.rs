@@ -1,7 +1,9 @@
 use crate::detect::ContentType;
 use crate::transforms::TransformKind;
+use once_cell::sync::OnceCell;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
@@ -19,6 +21,9 @@ pub struct Rule {
     pub auto_accept: bool,
     #[serde(rename = "match", default)]
     pub matchers: Matchers,
+    /// Cached compiled regex (populated lazily, skipped in serialization)
+    #[serde(skip)]
+    compiled_regex: Arc<OnceCell<Option<Regex>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -54,6 +59,18 @@ pub struct Suggestion {
 impl Rule {
     pub fn transform_kind(&self) -> Option<TransformKind> {
         self.transform
+    }
+
+    /// Get the compiled regex, caching it for future calls
+    fn get_compiled_regex(&self) -> Option<&Regex> {
+        self.compiled_regex
+            .get_or_init(|| {
+                self.matchers
+                    .regex
+                    .as_ref()
+                    .and_then(|pattern| Regex::new(pattern).ok())
+            })
+            .as_ref()
     }
 
     pub fn matches(&self, ctx: &MatchContext) -> Option<i32> {
@@ -93,8 +110,9 @@ impl Rule {
             }
             specificity += 1;
         }
-        if let Some(pattern) = &self.matchers.regex {
-            let re = Regex::new(pattern).ok()?;
+        if self.matchers.regex.is_some() {
+            // Use cached compiled regex
+            let re = self.get_compiled_regex()?;
             if !re.is_match(&ctx.text) {
                 return None;
             }
