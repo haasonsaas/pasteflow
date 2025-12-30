@@ -13,13 +13,14 @@ use global_hotkey::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
+use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoopBuilder};
-use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
-use winit::window::WindowBuilder;
+use winit::event::WindowEvent;
+use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::window::{Window, WindowId};
 use wry::http::Request;
 use wry::{WebView, WebViewBuilder};
 
@@ -181,106 +182,198 @@ enum UserEvent {
 
 type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
-pub fn run() -> AppResult<()> {
-    let cfg = config::load_or_init()?;
-    let clipboard = Clipboard::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
-    let hotkey_manager = GlobalHotKeyManager::new()?;
+struct Pasteflow {
+    state: AppState,
+    window: Option<Arc<Window>>,
+    webview: Option<WebView>,
+    tray: Option<TrayHandle>,
+    proxy: EventLoopProxy<UserEvent>,
+}
 
-    let mut state = AppState {
-        cfg,
-        clipboard,
-        suggestions: Vec::new(),
-        selected_rule_id: None,
-        panel: PanelState {
-            input: String::new(),
-            output: String::new(),
-            diff: String::new(),
-            error: None,
-            active_app: None,
-            content_types: Vec::new(),
-            active_app_key: "global".to_string(),
-            search_query: None,
-        },
-        config_text: None,
-        config_error: None,
-        config_draft_error: None,
-        config_diff: None,
-        hotkey_manager,
-        registered_hotkeys: Vec::new(),
-        hotkey_map: HashMap::new(),
-        hotkey_warnings: Vec::new(),
-        history: Vec::new(),
-    };
+impl Pasteflow {
+    fn new(proxy: EventLoopProxy<UserEvent>) -> AppResult<Self> {
+        let cfg = config::load_or_init()?;
+        let clipboard =
+            Clipboard::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
+        let hotkey_manager = GlobalHotKeyManager::new()?;
 
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
-        .with_activation_policy(ActivationPolicy::Accessory)
-        .build()?;
-    let proxy = event_loop.create_proxy();
+        let state = AppState {
+            cfg,
+            clipboard,
+            suggestions: Vec::new(),
+            selected_rule_id: None,
+            panel: PanelState {
+                input: String::new(),
+                output: String::new(),
+                diff: String::new(),
+                error: None,
+                active_app: None,
+                content_types: Vec::new(),
+                active_app_key: "global".to_string(),
+                search_query: None,
+            },
+            config_text: None,
+            config_error: None,
+            config_draft_error: None,
+            config_diff: None,
+            hotkey_manager,
+            registered_hotkeys: Vec::new(),
+            hotkey_map: HashMap::new(),
+            hotkey_warnings: Vec::new(),
+            history: Vec::new(),
+        };
 
-    let window = WindowBuilder::new()
-        .with_title("Pasteflow")
-        .with_visible(false)
-        .with_inner_size(LogicalSize::new(900.0, 640.0))
-        .build(&event_loop)?;
-
-    let html = include_str!("../assets/panel.html");
-    let webview = WebViewBuilder::new(&window)
-        .with_html(html)
-        .with_ipc_handler(move |req: Request<String>| {
-            if let Ok(event) = serde_json::from_str::<IpcMessage>(req.body()) {
-                let _ = proxy.send_event(UserEvent::Ipc(event));
-            }
+        Ok(Self {
+            state,
+            window: None,
+            webview: None,
+            tray: None,
+            proxy,
         })
-        .build()?;
+    }
+}
 
-    let tray = build_tray()?;
+impl ApplicationHandler<UserEvent> for Pasteflow {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // Create window
+        let window_attrs = Window::default_attributes()
+            .with_title("Pasteflow")
+            .with_visible(false)
+            .with_inner_size(LogicalSize::new(900.0, 640.0));
 
-    let _ = apply_hotkeys(&mut state);
+        let window = match event_loop.create_window(window_attrs) {
+            Ok(w) => Arc::new(w),
+            Err(e) => {
+                eprintln!("Failed to create window: {}", e);
+                event_loop.exit();
+                return;
+            }
+        };
 
-    let hotkey_proxy = event_loop.create_proxy();
-    std::thread::spawn(move || {
-        let rx = GlobalHotKeyEvent::receiver();
-        while let Ok(event) = rx.recv() {
-            let _ = hotkey_proxy.send_event(UserEvent::Hotkey(event.id()));
+        // Create webview
+        let html = include_str!("../assets/panel.html");
+        let proxy = self.proxy.clone();
+        let webview = match WebViewBuilder::new()
+            .with_html(html)
+            .with_ipc_handler(move |req: Request<String>| {
+                if let Ok(event) = serde_json::from_str::<IpcMessage>(req.body()) {
+                    let _ = proxy.send_event(UserEvent::Ipc(event));
+                }
+            })
+            .build(&window)
+        {
+            Ok(wv) => wv,
+            Err(e) => {
+                eprintln!("Failed to create webview: {}", e);
+                event_loop.exit();
+                return;
+            }
+        };
+
+        // Create tray
+        let tray = match build_tray() {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Failed to create tray: {}", e);
+                event_loop.exit();
+                return;
+            }
+        };
+
+        // Apply hotkeys
+        let _ = apply_hotkeys(&mut self.state);
+
+        // Start hotkey listener thread
+        let hotkey_proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let rx = GlobalHotKeyEvent::receiver();
+            while let Ok(event) = rx.recv() {
+                let _ = hotkey_proxy.send_event(UserEvent::Hotkey(event.id()));
+            }
+        });
+
+        // Start menu event listener thread
+        let menu_proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let rx = MenuEvent::receiver();
+            while let Ok(event) = rx.recv() {
+                let _ = menu_proxy.send_event(UserEvent::Menu(event));
+            }
+        });
+
+        self.window = Some(window);
+        self.webview = Some(webview);
+        self.tray = Some(tray);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested => {
+                if let Some(window) = &self.window {
+                    window.set_visible(false);
+                }
+            }
+            WindowEvent::Destroyed => {
+                event_loop.exit();
+            }
+            _ => {}
         }
-    });
+    }
 
-    let menu_proxy = event_loop.create_proxy();
-    std::thread::spawn(move || {
-        let rx = MenuEvent::receiver();
-        while let Ok(event) = rx.recv() {
-            let _ = menu_proxy.send_event(UserEvent::Menu(event));
-        }
-    });
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
+        let Some(window) = &self.window else { return };
+        let Some(webview) = &self.webview else { return };
+        let Some(tray) = &self.tray else { return };
 
-    event_loop.run(move |event, elwt| match event {
-        Event::UserEvent(UserEvent::Ipc(msg)) => {
-            handle_ipc(&mut state, msg, &window, &webview);
-        }
-        Event::UserEvent(UserEvent::Menu(event)) => {
-            if event.id == tray.show_id {
-                open_panel(&mut state, &window, &webview);
-            } else if event.id == tray.quit_id {
-                elwt.exit();
+        match event {
+            UserEvent::Ipc(msg) => {
+                handle_ipc(&mut self.state, msg, window, webview);
+            }
+            UserEvent::Menu(event) => {
+                if event.id == tray.show_id {
+                    open_panel(&mut self.state, window, webview);
+                } else if event.id == tray.quit_id {
+                    event_loop.exit();
+                }
+            }
+            UserEvent::Hotkey(id) => {
+                if should_handle_hotkey(&self.state, id) {
+                    open_panel(&mut self.state, window, webview);
+                }
             }
         }
-        Event::UserEvent(UserEvent::Hotkey(id)) => {
-            if should_handle_hotkey(&state, id) {
-                open_panel(&mut state, &window, &webview);
-            }
-        }
-        Event::WindowEvent { event, .. } => {
-            if matches!(event, WindowEvent::CloseRequested) {
-                window.set_visible(false);
-            }
-        }
-        Event::AboutToWait => {
-            elwt.set_control_flow(ControlFlow::Wait);
-        }
-        _ => {}
-    })?;
+    }
+}
 
-    #[allow(unreachable_code)]
+pub fn run() -> AppResult<()> {
+    // On macOS, set activation policy to accessory (no dock icon)
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+        use objc2_foundation::MainThreadMarker;
+
+        if let Some(mtm) = MainThreadMarker::new() {
+            let app = NSApplication::sharedApplication(mtm);
+            app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+        }
+    }
+
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
+        .build()
+        .map_err(|e| format!("Failed to create event loop: {}", e))?;
+
+    let proxy = event_loop.create_proxy();
+    let mut app = Pasteflow::new(proxy)?;
+
+    event_loop
+        .run_app(&mut app)
+        .map_err(|e| format!("Event loop error: {}", e))?;
+
     Ok(())
 }
 
@@ -322,7 +415,7 @@ fn load_icon() -> Result<tray_icon::Icon, Box<dyn Error + Send + Sync>> {
         .map_err(|e| format!("Failed to create icon: {}", e).into())
 }
 
-fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &WebView) {
+fn open_panel(state: &mut AppState, window: &Window, webview: &WebView) {
     let text = match state.clipboard.get_text() {
         Ok(t) => t,
         Err(_) => {
@@ -384,12 +477,7 @@ fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &We
     window.focus_window();
 }
 
-fn handle_ipc(
-    state: &mut AppState,
-    msg: IpcMessage,
-    window: &winit::window::Window,
-    webview: &WebView,
-) {
+fn handle_ipc(state: &mut AppState, msg: IpcMessage, window: &Window, webview: &WebView) {
     match msg {
         IpcMessage::Paste => {
             apply_paste(state);
