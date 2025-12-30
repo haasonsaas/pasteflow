@@ -232,6 +232,12 @@
         border-color: var(--border-strong);
       }
 
+      #configToggle.active {
+        background: var(--accent-surface);
+        border-color: var(--accent-primary);
+        color: var(--accent-primary);
+      }
+
       #badges {
         display: flex;
         gap: 8px;
@@ -504,54 +510,195 @@
         letter-spacing: 0.05em;
       }
 
-      /* Config Panel */
+      /* Config Modal Backdrop */
+      #configBackdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        z-index: 99;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+      }
+
+      #configBackdrop.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      /* Config Panel - Modal */
       #configPanel {
-        position: relative;
-        z-index: 1;
-        margin: 0 20px 16px;
-        border: 1px solid var(--border-default);
-        border-radius: var(--radius-md);
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.95);
+        width: calc(100% - 40px);
+        max-width: 680px;
+        max-height: calc(100% - 80px);
+        z-index: 100;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg);
         background: var(--bg-base);
-        padding: 16px;
         display: none;
+        flex-direction: column;
+        overflow: hidden;
+        opacity: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+
+      #configPanel.visible {
+        display: flex;
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent-primary), 0 0 60px var(--accent-glow);
+      }
+
+      /* Config Header */
+      .config-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-subtle);
+        background: var(--bg-elevated);
+      }
+
+      .config-header h3 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .config-header h3::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        background: var(--accent-primary);
+        border-radius: 2px;
+        box-shadow: 0 0 12px var(--accent-primary);
+      }
+
+      .config-close-btn {
+        width: 32px;
+        height: 32px;
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-sm);
+        background: var(--bg-surface);
+        color: var(--text-tertiary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        transition: all 0.15s ease;
+      }
+
+      .config-close-btn:hover {
+        background: var(--error-surface);
+        border-color: var(--error);
+        color: var(--error);
+      }
+
+      /* Config Tabs */
+      .config-tabs {
+        display: flex;
+        gap: 0;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--border-subtle);
+        background: var(--bg-elevated);
+      }
+
+      .config-tab {
+        padding: 12px 20px;
+        border: none;
+        background: transparent;
+        color: var(--text-tertiary);
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        position: relative;
+        transition: color 0.15s ease;
+      }
+
+      .config-tab:hover {
+        color: var(--text-secondary);
+      }
+
+      .config-tab.active {
+        color: var(--accent-primary);
+      }
+
+      .config-tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--accent-primary);
+        box-shadow: 0 0 10px var(--accent-primary);
+      }
+
+      /* Config Body */
+      .config-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+      }
+
+      .config-tab-content {
+        display: none;
+        flex-direction: column;
+        gap: 16px;
+        animation: fadeIn 0.2s ease-out;
+      }
+
+      .config-tab-content.active {
+        display: flex;
+      }
+
+      /* Config Sections */
+      .config-section {
+        display: flex;
         flex-direction: column;
         gap: 12px;
       }
 
-      #configPanel h3 {
-        margin: 0;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: var(--text-tertiary);
-        font-weight: 600;
-      }
-
-      .config-section {
-        border-top: 1px solid var(--border-subtle);
-        padding-top: 14px;
+      .config-section-header {
         display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .config-section:first-of-type {
-        border-top: none;
-        padding-top: 0;
+        align-items: center;
+        justify-content: space-between;
       }
 
       .config-section strong {
         font-size: 11px;
         color: var(--text-secondary);
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
         font-weight: 600;
+      }
+
+      .config-note {
+        font-size: 10px;
+        color: var(--text-disabled);
+        padding: 8px 12px;
+        background: var(--bg-elevated);
+        border-radius: var(--radius-sm);
+        border-left: 2px solid var(--accent-primary);
       }
 
       .config-row {
         display: grid;
         grid-template-columns: 140px 1fr;
-        gap: 10px;
+        gap: 12px;
         align-items: center;
         font-size: 11px;
         color: var(--text-tertiary);
@@ -560,7 +707,7 @@
       .config-input {
         border: 1px solid var(--border-default);
         border-radius: var(--radius-sm);
-        padding: 8px 10px;
+        padding: 10px 12px;
         font-size: 11px;
         font-family: inherit;
         background: var(--bg-surface);
@@ -568,20 +715,20 @@
         transition: all 0.15s ease;
       }
 
+      .config-input:hover {
+        border-color: var(--border-strong);
+      }
+
       .config-input:focus {
         outline: none;
         border-color: var(--accent-primary);
         box-shadow: 0 0 0 3px var(--accent-glow);
+        background: var(--bg-elevated);
       }
 
       .config-input:disabled {
         opacity: 0.5;
         cursor: not-allowed;
-      }
-
-      .config-note {
-        font-size: 10px;
-        color: var(--text-disabled);
       }
 
       .warning-list {
@@ -590,6 +737,10 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+        padding: 10px 12px;
+        background: rgba(255, 183, 77, 0.08);
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255, 183, 77, 0.2);
       }
 
       .hotkey-list,
@@ -599,22 +750,145 @@
         gap: 8px;
       }
 
-      .hotkey-item,
-      .rule-item {
+      .hotkey-item {
         display: grid;
         grid-template-columns: 160px 1fr auto;
-        gap: 8px;
+        gap: 10px;
         align-items: center;
+        padding: 10px 12px;
+        background: var(--bg-elevated);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-subtle);
       }
 
+      .hotkey-item.add-new {
+        background: transparent;
+        border-style: dashed;
+        border-color: var(--border-default);
+      }
+
+      /* Collapsible Rule Items */
       .rule-item {
-        grid-template-columns: 180px 1fr auto;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        background: var(--bg-elevated);
+        overflow: hidden;
+        transition: all 0.15s ease;
+      }
+
+      .rule-item:hover {
+        border-color: var(--border-default);
+      }
+
+      .rule-item-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+
+      .rule-item-header:hover {
+        background: var(--bg-hover);
+      }
+
+      .rule-item-chevron {
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-tertiary);
+        transition: transform 0.2s ease;
+        font-size: 10px;
+      }
+
+      .rule-item.expanded .rule-item-chevron {
+        transform: rotate(90deg);
+      }
+
+      .rule-item-name {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .rule-item-badges {
+        display: flex;
+        gap: 6px;
+      }
+
+      .rule-item-badge {
+        padding: 3px 8px;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 3px;
+        font-weight: 600;
+      }
+
+      .rule-item-badge.pinned {
+        background: var(--accent-surface);
+        color: var(--accent-primary);
+        border: 1px solid var(--accent-primary);
+      }
+
+      .rule-item-badge.auto {
+        background: rgba(255, 183, 77, 0.1);
+        color: var(--warning);
+        border: 1px solid rgba(255, 183, 77, 0.3);
+      }
+
+      .rule-item-body {
+        display: none;
+        padding: 0 14px 14px;
+        flex-direction: column;
+        gap: 12px;
+        border-top: 1px solid var(--border-subtle);
+        animation: fadeIn 0.15s ease-out;
+      }
+
+      .rule-item.expanded .rule-item-body {
+        display: flex;
+      }
+
+      .rule-item-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .rule-item-row label {
+        font-size: 11px;
+        color: var(--text-tertiary);
+        min-width: 80px;
+      }
+
+      .rule-item-row .config-input {
+        flex: 1;
+      }
+
+      .rule-item-controls {
+        display: flex;
+        gap: 16px;
+        padding-top: 8px;
+      }
+
+      .rule-item-controls label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--text-tertiary);
+        cursor: pointer;
       }
 
       .remove-btn {
         border: 1px solid var(--border-default);
         border-radius: var(--radius-sm);
-        padding: 6px 10px;
+        padding: 8px 14px;
         background: var(--bg-surface);
         cursor: pointer;
         font-size: 10px;
@@ -622,7 +896,8 @@
         color: var(--text-tertiary);
         transition: all 0.15s ease;
         text-transform: uppercase;
-        letter-spacing: 0.03em;
+        letter-spacing: 0.05em;
+        font-weight: 500;
       }
 
       .remove-btn:hover {
@@ -636,33 +911,61 @@
         cursor: not-allowed;
       }
 
-      #configDirtyNotice {
-        color: var(--warning);
-        font-size: 10px;
-        padding: 8px 12px;
-        background: rgba(255, 183, 77, 0.1);
+      .add-btn {
+        border: 1px solid var(--accent-primary);
         border-radius: var(--radius-sm);
-        border: 1px solid rgba(255, 183, 77, 0.2);
+        padding: 8px 14px;
+        background: var(--accent-surface);
+        cursor: pointer;
+        font-size: 10px;
+        font-family: inherit;
+        color: var(--accent-primary);
+        transition: all 0.15s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 500;
       }
 
-      #configPanel.visible {
+      .add-btn:hover {
+        background: var(--accent-primary);
+        color: var(--bg-deep);
+      }
+
+      .add-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      #configDirtyNotice {
+        color: var(--warning);
+        font-size: 11px;
+        padding: 10px 14px;
+        background: rgba(255, 183, 77, 0.1);
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255, 183, 77, 0.25);
         display: flex;
-        animation: fadeIn 0.2s ease-out;
+        align-items: center;
+        gap: 10px;
+      }
+
+      #configDirtyNotice::before {
+        content: '⚠';
+        font-size: 14px;
       }
 
       #configText {
         width: 100%;
-        min-height: 180px;
+        min-height: 240px;
         border: 1px solid var(--border-default);
         border-radius: var(--radius-sm);
-        padding: 12px;
+        padding: 14px;
         font-family: inherit;
         font-size: 11px;
         background: var(--bg-surface);
         color: var(--text-primary);
         resize: vertical;
         transition: all 0.15s ease;
-        line-height: 1.6;
+        line-height: 1.7;
       }
 
       #configText:focus {
@@ -673,7 +976,9 @@
 
       #configDiff {
         width: 100%;
-        min-height: 100px;
+        min-height: 80px;
+        max-height: 160px;
+        overflow-y: auto;
         border: 1px dashed var(--border-default);
         border-radius: var(--radius-sm);
         padding: 12px;
@@ -687,11 +992,27 @@
 
       #configDiff.empty {
         color: var(--text-disabled);
+        min-height: 40px;
       }
 
-      #configActions {
+      /* Config Footer */
+      .config-footer {
         display: flex;
-        justify-content: flex-end;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-top: 1px solid var(--border-subtle);
+        background: var(--bg-elevated);
+      }
+
+      .config-footer-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .config-footer-right {
+        display: flex;
         gap: 8px;
       }
 
@@ -699,6 +1020,40 @@
       #configDraftError {
         color: var(--error);
         font-size: 11px;
+        padding: 8px 12px;
+        background: var(--error-surface);
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(244, 67, 54, 0.3);
+      }
+
+      /* Toast Notification */
+      #toast {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        padding: 12px 24px;
+        background: var(--accent-primary);
+        color: var(--bg-deep);
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: var(--radius-md);
+        box-shadow: 0 8px 30px rgba(0, 255, 200, 0.3);
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+        z-index: 200;
+      }
+
+      #toast.visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      #toast.error {
+        background: var(--error);
+        box-shadow: 0 8px 30px rgba(244, 67, 54, 0.3);
       }
 
       /* Recent Panel */
@@ -1032,8 +1387,41 @@
           gap: 4px;
         }
         #configPanel {
-          margin: 0 12px 12px;
-          padding: 12px;
+          width: calc(100% - 24px);
+          max-height: calc(100% - 40px);
+        }
+        .config-header {
+          padding: 12px 16px;
+        }
+        .config-tabs {
+          padding: 0 16px;
+        }
+        .config-tab {
+          padding: 10px 14px;
+          font-size: 10px;
+        }
+        .config-body {
+          padding: 16px;
+        }
+        .config-footer {
+          padding: 12px 16px;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .config-footer-left,
+        .config-footer-right {
+          width: 100%;
+          justify-content: center;
+        }
+        .hotkey-item {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        .rule-item-header {
+          padding: 10px 12px;
+        }
+        .rule-item-body {
+          padding: 0 12px 12px;
         }
         .config-section strong {
           font-size: 10px;
@@ -1186,42 +1574,89 @@
         <pre id="diffText"></pre>
       </section>
     </main>
-    <section id="configPanel">
-      <h3>Config</h3>
-      <div id="configDirtyNotice" hidden>Raw editor has unsaved changes. UI controls are disabled.</div>
-      <div class="config-section">
-        <strong>Hotkeys</strong>
-        <div class="config-note">Changes apply immediately.</div>
-        <div class="warning-list" id="hotkeyWarnings"></div>
-        <div class="config-row">
-          <span>Global hotkey</span>
-          <input class="config-input" id="hotkeyCombo" placeholder="Cmd+Shift+V" />
+    <!-- Config Modal Backdrop -->
+    <div id="configBackdrop"></div>
+
+    <!-- Config Modal -->
+    <section id="configPanel" role="dialog" aria-modal="true" aria-labelledby="configTitle">
+      <div class="config-header">
+        <h3 id="configTitle">Settings</h3>
+        <button class="config-close-btn" id="configCloseX" aria-label="Close settings">×</button>
+      </div>
+
+      <div class="config-tabs" role="tablist">
+        <button class="config-tab active" data-tab="hotkeys" role="tab" aria-selected="true">Hotkeys</button>
+        <button class="config-tab" data-tab="rules" role="tab" aria-selected="false">Rules</button>
+        <button class="config-tab" data-tab="advanced" role="tab" aria-selected="false">Advanced</button>
+      </div>
+
+      <div class="config-body">
+        <!-- Hotkeys Tab -->
+        <div class="config-tab-content active" data-tab-content="hotkeys">
+          <div class="config-note">Hotkey changes apply immediately. Use Cmd/Ctrl + modifiers + key format.</div>
+          <div class="warning-list" id="hotkeyWarnings" hidden></div>
+
+          <div class="config-section">
+            <strong>Global Trigger</strong>
+            <div class="config-row">
+              <span>Default hotkey</span>
+              <input class="config-input" id="hotkeyCombo" placeholder="Cmd+Shift+V" />
+            </div>
+          </div>
+
+          <div class="config-section">
+            <div class="config-section-header">
+              <strong>App-Specific Overrides</strong>
+            </div>
+            <div class="hotkey-list" id="hotkeyList"></div>
+            <div class="hotkey-item add-new">
+              <input class="config-input" id="hotkeyAppInput" placeholder="App name (e.g. Slack)" />
+              <input class="config-input" id="hotkeyComboInput" placeholder="Cmd+Shift+P" />
+              <button class="add-btn" id="hotkeyAddBtn">+ Add</button>
+            </div>
+          </div>
         </div>
-        <div class="hotkey-list" id="hotkeyList"></div>
-        <div class="hotkey-item">
-          <input class="config-input" id="hotkeyAppInput" placeholder="App name (e.g. Slack)" />
-          <input class="config-input" id="hotkeyComboInput" placeholder="Cmd+Shift+P" />
-          <button class="remove-btn" id="hotkeyAddBtn">Add</button>
+
+        <!-- Rules Tab -->
+        <div class="config-tab-content" data-tab-content="rules">
+          <div class="config-note">Click a rule to expand and edit its settings. Pinned rules appear first in suggestions.</div>
+          <div class="rule-editor-list" id="ruleEditorList"></div>
+        </div>
+
+        <!-- Advanced Tab -->
+        <div class="config-tab-content" data-tab-content="advanced">
+          <div id="configDirtyNotice" hidden>Raw editor has unsaved changes. Other tabs are read-only until you save or revert.</div>
+
+          <div class="config-section">
+            <strong>Raw Configuration (TOML)</strong>
+            <div class="config-note">Edit the raw config file directly. Be careful with syntax!</div>
+            <textarea id="configText" spellcheck="false" placeholder="Loading configuration..."></textarea>
+            <div id="configDraftError"></div>
+          </div>
+
+          <div class="config-section">
+            <strong>Pending Changes</strong>
+            <div id="configDiff" class="empty">No changes.</div>
+          </div>
+
+          <div id="configError"></div>
         </div>
       </div>
-      <div class="config-section">
-        <strong>Rules</strong>
-        <div class="rule-editor-list" id="ruleEditorList"></div>
-      </div>
-      <div class="config-section">
-        <strong>Raw TOML</strong>
-      <textarea id="configText" spellcheck="false"></textarea>
-      <div id="configDraftError"></div>
-      <div id="configDiff"></div>
-      <div id="configError"></div>
-      <div id="configActions">
-        <button class="action" id="configRevert">Revert</button>
-        <button class="action" id="configReload">Reload</button>
-        <button class="action" id="configClose">Close</button>
-        <button class="action primary" id="configSave">Save</button>
-      </div>
+
+      <div class="config-footer">
+        <div class="config-footer-left">
+          <button class="action" id="configRevert" disabled>Revert</button>
+          <button class="action" id="configReload">Reload</button>
+        </div>
+        <div class="config-footer-right">
+          <button class="action" id="configClose">Close <kbd>Esc</kbd></button>
+          <button class="action primary" id="configSave">Save Changes</button>
+        </div>
       </div>
     </section>
+
+    <!-- Toast Notification -->
+    <div id="toast"></div>
     <div id="actions">
       <button class="action" id="helpBtn" title="Keyboard shortcuts">?</button>
       <button class="action" id="copy" aria-label="Copy transformed text to clipboard">Copy <kbd>⇧⌘C</kbd></button>
@@ -1284,14 +1719,50 @@
       let configDirty = false;
       let configDraftTimer = null;
       let helpOverlayVisible = false;
+      let activeConfigTab = "hotkeys";
+      let expandedRules = new Set();
+      let toastTimer = null;
 
       function toggleHelpOverlay() {
         helpOverlayVisible = !helpOverlayVisible;
         document.getElementById("helpOverlay").hidden = !helpOverlayVisible;
       }
 
+      function showToast(message, isError = false) {
+        const toast = document.getElementById("toast");
+        toast.textContent = message;
+        toast.classList.toggle("error", isError);
+        toast.classList.add("visible");
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toast.classList.remove("visible");
+        }, 2500);
+      }
+
+      function switchConfigTab(tabName) {
+        activeConfigTab = tabName;
+        document.querySelectorAll(".config-tab").forEach(tab => {
+          const isActive = tab.dataset.tab === tabName;
+          tab.classList.toggle("active", isActive);
+          tab.setAttribute("aria-selected", isActive);
+        });
+        document.querySelectorAll(".config-tab-content").forEach(content => {
+          content.classList.toggle("active", content.dataset.tabContent === tabName);
+        });
+      }
+
+      function toggleRuleExpanded(ruleId) {
+        if (expandedRules.has(ruleId)) {
+          expandedRules.delete(ruleId);
+        } else {
+          expandedRules.add(ruleId);
+        }
+        renderRuleEditor();
+      }
+
       const searchInput = document.getElementById("ruleSearch");
       const configPanel = document.getElementById("configPanel");
+      const configBackdrop = document.getElementById("configBackdrop");
       const configText = document.getElementById("configText");
       const hotkeyComboInput = document.getElementById("hotkeyCombo");
       const hotkeyList = document.getElementById("hotkeyList");
@@ -1441,17 +1912,35 @@
 
       function renderConfig() {
         configPanel.classList.toggle("visible", configOpen);
+        configBackdrop.classList.toggle("visible", configOpen);
+        document.getElementById("configToggle").classList.toggle("active", configOpen);
         configDirtyNotice.hidden = !configDirty;
+
         const hasConfig = !!state.configText;
         if (configOpen && hasConfig && !configDirty) {
           configText.value = state.configText;
         }
         if (configOpen && !hasConfig) {
-          configText.value = "Loading config...";
+          configText.value = "";
+          configText.placeholder = "Loading configuration...";
         }
         configText.disabled = !hasConfig;
-        document.getElementById("configError").textContent = state.configError || "";
-        configDraftError.textContent = state.configDraftError || "";
+
+        const errorEl = document.getElementById("configError");
+        if (state.configError) {
+          errorEl.textContent = state.configError;
+          errorEl.style.display = "block";
+        } else {
+          errorEl.style.display = "none";
+        }
+
+        if (state.configDraftError) {
+          configDraftError.textContent = state.configDraftError;
+          configDraftError.style.display = "block";
+        } else {
+          configDraftError.style.display = "none";
+        }
+
         if (state.configDiff && state.configDiff.trim().length) {
           configDiff.textContent = state.configDiff;
           configDiff.classList.remove("empty");
@@ -1467,21 +1956,29 @@
         hotkeyAddBtn.disabled = disabled;
         configRevertBtn.disabled = !configDirty;
 
+        // Hotkey combo
         hotkeyComboInput.value = state.config.hotkey_combo || "";
         hotkeyComboInput.onchange = (event) => {
           if (disabled) return;
           window.ipc.postMessage(JSON.stringify({ type: "update_hotkey_combo", combo: event.target.value }));
+          showToast("Hotkey updated");
         };
 
-        hotkeyList.innerHTML = "";
-        hotkeyWarnings.innerHTML = "";
+        // Hotkey warnings
         if (state.config.hotkey_warnings && state.config.hotkey_warnings.length) {
+          hotkeyWarnings.hidden = false;
+          hotkeyWarnings.innerHTML = "";
           state.config.hotkey_warnings.forEach((warning) => {
             const line = document.createElement("div");
             line.textContent = warning;
             hotkeyWarnings.appendChild(line);
           });
+        } else {
+          hotkeyWarnings.hidden = true;
         }
+
+        // Hotkey list
+        hotkeyList.innerHTML = "";
         (state.config.hotkey_apps || []).forEach((entry) => {
           const row = document.createElement("div");
           row.className = "hotkey-item";
@@ -1490,6 +1987,7 @@
           appLabel.className = "config-input";
           appLabel.value = entry.app;
           appLabel.disabled = true;
+          appLabel.style.opacity = "0.7";
 
           const comboInput = document.createElement("input");
           comboInput.className = "config-input";
@@ -1500,6 +1998,7 @@
             window.ipc.postMessage(
               JSON.stringify({ type: "update_hotkey_app", app: entry.app, combo: event.target.value })
             );
+            showToast(`Hotkey for ${entry.app} updated`);
           };
 
           const removeBtn = document.createElement("button");
@@ -1509,6 +2008,7 @@
           removeBtn.onclick = () => {
             if (disabled) return;
             window.ipc.postMessage(JSON.stringify({ type: "remove_hotkey_app", app: entry.app }));
+            showToast(`Removed hotkey for ${entry.app}`);
           };
 
           row.appendChild(appLabel);
@@ -1517,6 +2017,7 @@
           hotkeyList.appendChild(row);
         });
 
+        // Add hotkey button
         hotkeyAddBtn.onclick = () => {
           if (disabled) return;
           const app = hotkeyAppInput.value.trim();
@@ -1525,26 +2026,88 @@
           window.ipc.postMessage(JSON.stringify({ type: "update_hotkey_app", app, combo }));
           hotkeyAppInput.value = "";
           hotkeyComboAddInput.value = "";
+          showToast(`Added hotkey for ${app}`);
         };
 
+        renderRuleEditor();
+      }
+
+      function renderRuleEditor() {
+        const disabled = configDirty;
         ruleEditorList.innerHTML = "";
+
+        if (!state.config.rules || state.config.rules.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = "No rules configured yet.";
+          ruleEditorList.appendChild(empty);
+          return;
+        }
+
         (state.config.rules || []).forEach((rule) => {
-          const row = document.createElement("div");
-          row.className = "rule-item";
+          const isExpanded = expandedRules.has(rule.id);
+          const item = document.createElement("div");
+          item.className = "rule-item" + (isExpanded ? " expanded" : "");
+
+          // Header (clickable to expand/collapse)
+          const header = document.createElement("div");
+          header.className = "rule-item-header";
+          header.onclick = () => toggleRuleExpanded(rule.id);
+
+          const chevron = document.createElement("div");
+          chevron.className = "rule-item-chevron";
+          chevron.textContent = "▶";
 
           const name = document.createElement("div");
+          name.className = "rule-item-name";
           name.textContent = rule.name;
 
+          const badges = document.createElement("div");
+          badges.className = "rule-item-badges";
+          if (rule.pinned) {
+            const badge = document.createElement("span");
+            badge.className = "rule-item-badge pinned";
+            badge.textContent = "Pinned";
+            badges.appendChild(badge);
+          }
+          if (rule.auto_accept) {
+            const badge = document.createElement("span");
+            badge.className = "rule-item-badge auto";
+            badge.textContent = "Auto";
+            badges.appendChild(badge);
+          }
+
+          header.appendChild(chevron);
+          header.appendChild(name);
+          header.appendChild(badges);
+
+          // Body (expandable content)
+          const body = document.createElement("div");
+          body.className = "rule-item-body";
+
+          // Description row
+          const descRow = document.createElement("div");
+          descRow.className = "rule-item-row";
+          const descLabel = document.createElement("label");
+          descLabel.textContent = "Description";
           const descInput = document.createElement("input");
           descInput.className = "config-input";
           descInput.value = rule.description || "";
+          descInput.placeholder = "Optional description...";
           descInput.disabled = disabled;
           descInput.onchange = (event) => {
             if (disabled) return;
             window.ipc.postMessage(
               JSON.stringify({ type: "update_rule_description", id: rule.id, value: event.target.value })
             );
+            showToast("Rule updated");
           };
+          descRow.appendChild(descLabel);
+          descRow.appendChild(descInput);
+
+          // Controls row
+          const controls = document.createElement("div");
+          controls.className = "rule-item-controls";
 
           const pinLabel = document.createElement("label");
           const pinInput = document.createElement("input");
@@ -1556,14 +2119,35 @@
             window.ipc.postMessage(
               JSON.stringify({ type: "toggle_pinned", id: rule.id, value: event.target.checked })
             );
+            showToast(event.target.checked ? "Rule pinned" : "Rule unpinned");
           };
           pinLabel.appendChild(pinInput);
-          pinLabel.appendChild(document.createTextNode(" Pin"));
+          pinLabel.appendChild(document.createTextNode(" Pin to top"));
 
-          row.appendChild(name);
-          row.appendChild(descInput);
-          row.appendChild(pinLabel);
-          ruleEditorList.appendChild(row);
+          const autoLabel = document.createElement("label");
+          const autoInput = document.createElement("input");
+          autoInput.type = "checkbox";
+          autoInput.checked = !!rule.auto_accept;
+          autoInput.disabled = disabled;
+          autoInput.onchange = (event) => {
+            if (disabled) return;
+            window.ipc.postMessage(
+              JSON.stringify({ type: "toggle_auto_accept", id: rule.id, value: event.target.checked })
+            );
+            showToast(event.target.checked ? "Auto-accept enabled" : "Auto-accept disabled");
+          };
+          autoLabel.appendChild(autoInput);
+          autoLabel.appendChild(document.createTextNode(" Auto-accept"));
+
+          controls.appendChild(pinLabel);
+          controls.appendChild(autoLabel);
+
+          body.appendChild(descRow);
+          body.appendChild(controls);
+
+          item.appendChild(header);
+          item.appendChild(body);
+          ruleEditorList.appendChild(item);
         });
       }
 
@@ -1681,6 +2265,7 @@
         if (event.target === event.currentTarget) toggleHelpOverlay();
       };
 
+      // Config toggle button
       document.getElementById("configToggle").onclick = () => {
         configOpen = !configOpen;
         configDirty = false;
@@ -1690,9 +2275,27 @@
         renderConfig();
       };
 
+      // Tab switching
+      document.querySelectorAll(".config-tab").forEach(tab => {
+        tab.onclick = () => switchConfigTab(tab.dataset.tab);
+      });
+
+      // Config close button (X)
+      document.getElementById("configCloseX").onclick = () => {
+        configOpen = false;
+        renderConfig();
+      };
+
+      // Backdrop click to close
+      configBackdrop.onclick = () => {
+        configOpen = false;
+        renderConfig();
+      };
+
       document.getElementById("configReload").onclick = () => {
         configDirty = false;
         window.ipc.postMessage(JSON.stringify({ type: "request_config" }));
+        showToast("Configuration reloaded");
       };
 
       configRevertBtn.onclick = () => {
@@ -1701,6 +2304,7 @@
         configText.value = state.configText;
         window.ipc.postMessage(JSON.stringify({ type: "update_config_draft", raw: configText.value }));
         renderConfig();
+        showToast("Changes reverted");
       };
 
       document.getElementById("configClose").onclick = () => {
@@ -1711,6 +2315,7 @@
       document.getElementById("configSave").onclick = () => {
         const raw = configText.value;
         window.ipc.postMessage(JSON.stringify({ type: "save_config", raw }));
+        showToast("Configuration saved!");
       };
 
       configText.addEventListener("input", () => {
