@@ -899,7 +899,26 @@
         justify-content: center;
       }
 
-      /* Mobile Responsive */
+      /* Responsive Design */
+
+      /* Large tablets and small desktops */
+      @media (max-width: 1100px) {
+        main {
+          grid-template-columns: 1fr 1fr;
+        }
+        #ruleInfo {
+          grid-column: 1 / -1;
+          grid-row: 1;
+        }
+        #recentPanel {
+          display: none;
+        }
+        #diff {
+          grid-column: 1 / -1;
+        }
+      }
+
+      /* Tablets */
       @media (max-width: 900px) {
         main {
           grid-template-columns: 1fr;
@@ -914,67 +933,200 @@
           min-width: 0;
         }
         .pane {
-          min-height: 140px;
+          min-height: 120px;
         }
-        #ruleInfo, #recentPanel {
+        #ruleInfo {
           grid-column: 1;
+          grid-row: auto;
         }
         #diff {
           grid-column: 1;
         }
+        #badges {
+          flex-wrap: wrap;
+        }
+        #meta {
+          flex-wrap: wrap;
+          gap: 10px;
+        }
       }
 
-      @media (max-width: 600px) {
+      /* Large phones / small tablets */
+      @media (max-width: 700px) {
         header {
-          padding: 14px 14px 10px;
+          padding: 12px 16px 10px;
+          gap: 10px;
         }
         main {
-          padding: 14px;
+          padding: 12px 16px;
           gap: 10px;
         }
         .pane {
-          min-height: 120px;
+          min-height: 100px;
           padding: 12px;
+        }
+        .pane h3 {
+          font-size: 8px;
+          margin-bottom: 10px;
+        }
+        pre {
+          font-size: 11px;
+          line-height: 1.5;
+        }
+        .rule-button {
+          font-size: 10px;
+          padding: 6px 10px;
+        }
+        #suggestions {
+          gap: 4px;
+        }
+        #ruleInfo {
+          display: none;
+        }
+        #metrics {
+          display: none;
+        }
+        #actions {
+          padding: 12px 16px 14px;
+          gap: 6px;
+        }
+        #actions button.action {
+          padding: 10px 14px;
+          font-size: 10px;
+        }
+        #actions kbd {
+          display: none;
+        }
+      }
+
+      /* Phones */
+      @media (max-width: 500px) {
+        header {
+          padding: 10px 12px 8px;
+          gap: 8px;
+        }
+        main {
+          padding: 10px 12px;
+          gap: 8px;
+        }
+        .pane {
+          min-height: 80px;
+          padding: 10px;
         }
         pre {
           font-size: 10px;
         }
         .rule-button {
-          font-size: 10px;
-          padding: 5px 10px;
+          font-size: 9px;
+          padding: 5px 8px;
+          letter-spacing: 0.02em;
+        }
+        .rule-badges {
+          display: none;
         }
         .badge {
-          font-size: 9px;
-          padding: 3px 8px;
+          font-size: 8px;
+          padding: 2px 6px;
+        }
+        #badges {
+          gap: 4px;
         }
         #configPanel {
-          margin: 0 14px 14px;
-          padding: 14px;
+          margin: 0 12px 12px;
+          padding: 12px;
+        }
+        .config-section strong {
+          font-size: 10px;
         }
         .config-row {
           grid-template-columns: 1fr;
           gap: 6px;
+          font-size: 10px;
+        }
+        .config-input {
+          padding: 6px 8px;
+          font-size: 10px;
         }
         .hotkey-item, .rule-item {
           grid-template-columns: 1fr;
           gap: 6px;
         }
+        .help-overlay {
+          padding: 12px;
+        }
         .help-content {
-          padding: 20px;
-          margin: 14px;
+          padding: 16px;
+          max-width: 100%;
+        }
+        .help-content h3 {
+          font-size: 12px;
+          margin-bottom: 16px;
         }
         .help-grid {
           grid-template-columns: 1fr;
-          gap: 18px;
+          gap: 16px;
+        }
+        .help-row {
+          font-size: 10px;
+          gap: 8px;
+        }
+        .help-row kbd {
+          min-width: 24px;
+          padding: 2px 4px;
+          font-size: 8px;
         }
         #actions {
-          padding: 12px 14px 14px;
+          padding: 10px 12px 12px;
           flex-wrap: wrap;
         }
-        #actions button {
-          flex: 1 1 auto;
-          min-width: 80px;
+        #actions button.action {
+          flex: 1 1 calc(50% - 4px);
+          min-width: 0;
+          padding: 10px 10px;
           justify-content: center;
+        }
+        #helpBtn {
+          flex: 0 0 auto;
+          min-width: 36px;
+        }
+      }
+
+      /* Very small screens */
+      @media (max-width: 380px) {
+        .search-wrap {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        #configToggle {
+          width: 100%;
+          text-align: center;
+        }
+        #actions button.action {
+          flex: 1 1 100%;
+        }
+        #actions button.primary {
+          order: -1;
+        }
+      }
+
+      /* Height-constrained screens */
+      @media (max-height: 500px) {
+        header {
+          padding: 8px 16px 6px;
+          gap: 6px;
+        }
+        main {
+          padding: 8px 16px;
+          gap: 6px;
+        }
+        .pane {
+          min-height: 60px;
+        }
+        #badges, #meta, #metrics {
+          display: none;
+        }
+        #actions {
+          padding: 8px 16px 10px;
         }
       }
     </style>
