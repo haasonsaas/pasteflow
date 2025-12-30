@@ -1123,16 +1123,22 @@ fn code_from_key(key: &str) -> Option<Code> {
     }
 
     match key {
+        // Navigation & control
         "space" => Some(Code::Space),
         "tab" => Some(Code::Tab),
         "enter" | "return" => Some(Code::Enter),
         "esc" | "escape" => Some(Code::Escape),
         "backspace" => Some(Code::Backspace),
         "delete" => Some(Code::Delete),
-        "up" => Some(Code::ArrowUp),
-        "down" => Some(Code::ArrowDown),
-        "left" => Some(Code::ArrowLeft),
-        "right" => Some(Code::ArrowRight),
+        "up" | "arrowup" => Some(Code::ArrowUp),
+        "down" | "arrowdown" => Some(Code::ArrowDown),
+        "left" | "arrowleft" => Some(Code::ArrowLeft),
+        "right" | "arrowright" => Some(Code::ArrowRight),
+        "home" => Some(Code::Home),
+        "end" => Some(Code::End),
+        "pageup" => Some(Code::PageUp),
+        "pagedown" => Some(Code::PageDown),
+        // Function keys
         "f1" => Some(Code::F1),
         "f2" => Some(Code::F2),
         "f3" => Some(Code::F3),
@@ -1145,6 +1151,18 @@ fn code_from_key(key: &str) -> Option<Code> {
         "f10" => Some(Code::F10),
         "f11" => Some(Code::F11),
         "f12" => Some(Code::F12),
+        // Symbols and punctuation
+        "`" | "backquote" | "grave" => Some(Code::Backquote),
+        "-" | "minus" => Some(Code::Minus),
+        "=" | "equal" | "equals" => Some(Code::Equal),
+        "[" | "bracketleft" => Some(Code::BracketLeft),
+        "]" | "bracketright" => Some(Code::BracketRight),
+        "\\" | "backslash" => Some(Code::Backslash),
+        ";" | "semicolon" => Some(Code::Semicolon),
+        "'" | "quote" => Some(Code::Quote),
+        "," | "comma" => Some(Code::Comma),
+        "." | "period" => Some(Code::Period),
+        "/" | "slash" => Some(Code::Slash),
         _ => None,
     }
 }
