@@ -21,10 +21,32 @@ cargo run --release
 The app runs in the menu bar. Use the hotkey to open the diff panel.
 
 ## Shortcuts
-- `/` or `Cmd+K`: focus rule search.
-- `↑ / ↓`: cycle suggested rules.
-- `Cmd+Enter`: paste.
-- `Esc`: close panel (or clear search, or close config editor).
+
+### Actions
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+Enter` | Paste transformed text |
+| `Cmd+Shift+C` | Copy to clipboard |
+| `Esc` | Cancel / close panel / clear search |
+
+### Navigation
+| Shortcut | Action |
+|----------|--------|
+| `↑` / `↓` | Select previous/next rule |
+| `Tab` / `Shift+Tab` | Cycle through rules |
+| `1-9` | Quick select rule by position |
+
+### Search
+| Shortcut | Action |
+|----------|--------|
+| `/` or `Cmd+K` | Focus search input |
+| `Enter` (in search) | Select first result and paste |
+
+### Other
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+P` | Toggle pin on selected rule |
+| `?` | Show keyboard shortcuts help |
 
 ## In-app config editor
 Open **Edit config** to view and edit the TOML config in-app. Changes are validated before saving.

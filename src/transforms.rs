@@ -1,6 +1,11 @@
 use crate::detect::normalize_timestamp;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+// Pre-compiled regexes for performance
+static MULTI_BLANK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
+static BULLET_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(\s*)([-*•])\s+(.*)$").unwrap());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,16 +76,14 @@ fn normalize_whitespace(input: &str) -> String {
     }
 
     let mut out = lines.join("\n");
-    let multi_blank = Regex::new(r"\n{3,}").expect("regex compiles");
-    out = multi_blank.replace_all(&out, "\n\n").to_string();
+    out = MULTI_BLANK_RE.replace_all(&out, "\n\n").to_string();
     out
 }
 
 fn normalize_bullets(input: &str) -> String {
-    let bullet_re = Regex::new(r"^(\s*)([-*•])\s+(.*)$").expect("regex compiles");
     let mut out = Vec::new();
     for line in input.replace("\r\n", "\n").lines() {
-        if let Some(caps) = bullet_re.captures(line) {
+        if let Some(caps) = BULLET_RE.captures(line) {
             let indent = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             let content = caps.get(3).map(|m| m.as_str()).unwrap_or("");
             out.push(format!("{}- {}", indent, content.trim()));

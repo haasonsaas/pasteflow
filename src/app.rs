@@ -321,7 +321,13 @@ fn load_icon() -> tray_icon::Icon {
 }
 
 fn open_panel(state: &mut AppState, window: &winit::window::Window, webview: &WebView) {
-    let text = state.clipboard.get_text().unwrap_or_default();
+    let text = match state.clipboard.get_text() {
+        Ok(t) => t,
+        Err(_) => {
+            state.panel.error = Some("Failed to read clipboard".to_string());
+            String::new()
+        }
+    };
     let content_types = detect::detect_content_types(&text);
     let active_app = active_app_name();
     let app_key = active_app.clone().unwrap_or_else(|| "global".to_string());
@@ -690,7 +696,10 @@ fn apply_paste(state: &mut AppState) {
 }
 
 fn apply_copy_internal(state: &mut AppState, action: &str) {
-    let _ = state.clipboard.set_text(state.panel.output.clone());
+    if let Err(e) = state.clipboard.set_text(state.panel.output.clone()) {
+        state.panel.error = Some(format!("Failed to copy: {}", e));
+        return;
+    }
     record_history(state, action);
 }
 
@@ -718,11 +727,13 @@ fn snippet_text(text: &str) -> String {
     while cleaned.contains("  ") {
         cleaned = cleaned.replace("  ", " ");
     }
-    if cleaned.len() > 80 {
-        cleaned.truncate(77);
-        cleaned.push_str("...");
+    // Use char count to safely handle UTF-8 multi-byte characters
+    if cleaned.chars().count() > 80 {
+        let truncated: String = cleaned.chars().take(77).collect();
+        format!("{}...", truncated)
+    } else {
+        cleaned
     }
-    cleaned
 }
 
 fn content_type_label(content_type: &crate::detect::ContentType) -> String {

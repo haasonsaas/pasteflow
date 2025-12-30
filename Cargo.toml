@@ -2,6 +2,11 @@
 name = "pasteflow"
 version = "0.1.0"
 edition = "2024"
+description = "Rules-first paste transforms with mandatory preview and diff"
+license = "MIT"
+repository = "https://github.com/haasonsaas/pasteflow"
+keywords = ["clipboard", "paste", "transform", "productivity"]
+categories = ["development-tools"]
 
 [dependencies]
 arboard = "3.3"

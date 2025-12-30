@@ -458,8 +458,8 @@
       <div class="header-row">
         <div id="suggestions"></div>
         <div class="search-wrap">
-          <input id="ruleSearch" type="search" placeholder="Search rules (/ or ⌘K)" />
-          <button id="configToggle">Edit config</button>
+          <input id="ruleSearch" type="search" placeholder="Search rules (/ or ⌘K)" aria-label="Search rules by name or ID" />
+          <button id="configToggle" aria-label="Edit configuration settings">Edit config</button>
         </div>
       </div>
       <div id="badges">
@@ -546,13 +546,13 @@
     </section>
     <div id="actions">
       <button class="action" id="helpBtn" title="Keyboard shortcuts">?</button>
-      <button class="action" id="copy">Copy <kbd>⇧⌘C</kbd></button>
-      <button class="action primary" id="paste">Paste <kbd>⌘↵</kbd></button>
-      <button class="action" id="cancel">Cancel <kbd>Esc</kbd></button>
+      <button class="action" id="copy" aria-label="Copy transformed text to clipboard">Copy <kbd>⇧⌘C</kbd></button>
+      <button class="action primary" id="paste" aria-label="Paste transformed text">Paste <kbd>⌘↵</kbd></button>
+      <button class="action" id="cancel" aria-label="Cancel and close panel">Cancel <kbd>Esc</kbd></button>
     </div>
-    <div id="helpOverlay" class="help-overlay" hidden>
+    <div id="helpOverlay" class="help-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="helpTitle">
       <div class="help-content">
-        <h3>Keyboard Shortcuts</h3>
+        <h3 id="helpTitle">Keyboard Shortcuts</h3>
         <div class="help-grid">
           <div class="help-section">
             <h4>Actions</h4>

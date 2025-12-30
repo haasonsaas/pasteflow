@@ -1,6 +1,11 @@
 use chrono::{DateTime, NaiveDate, Utc};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+// Pre-compiled regexes for performance
+static BULLET_LIST_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*([-*•])\s+\S+").unwrap());
+static RELATIVE_NOW_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^now([+-])(\d+)([smhd])$").unwrap());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,12 +57,14 @@ fn is_bullet_list(input: &str) -> bool {
     if input.is_empty() {
         return false;
     }
-    let bullet_re = Regex::new(r"^\s*([-*•])\s+\S+").expect("regex compiles");
     let lines: Vec<&str> = input.lines().collect();
     if lines.len() < 2 {
         return false;
     }
-    let bullet_lines = lines.iter().filter(|line| bullet_re.is_match(line)).count();
+    let bullet_lines = lines
+        .iter()
+        .filter(|line| BULLET_LIST_RE.is_match(line))
+        .count();
     bullet_lines >= 2
 }
 
@@ -124,8 +131,7 @@ pub fn normalize_timestamp(input: &str) -> Option<String> {
 }
 
 fn parse_relative_now(input: &str) -> Option<DateTime<Utc>> {
-    let rel_re = Regex::new(r"^now([+-])(\d+)([smhd])$").ok()?;
-    let caps = rel_re.captures(input)?;
+    let caps = RELATIVE_NOW_RE.captures(input)?;
     let sign = caps.get(1)?.as_str();
     let amount: i64 = caps.get(2)?.as_str().parse().ok()?;
     let unit = caps.get(3)?.as_str();
