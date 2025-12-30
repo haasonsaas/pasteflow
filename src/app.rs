@@ -250,7 +250,8 @@ impl ApplicationHandler<UserEvent> for Pasteflow {
             }
         };
 
-        // Create webview
+        // Create webview as child to avoid winit contentView replacement panic
+        // See: https://github.com/tauri-apps/wry/issues/1477
         let html = include_str!("../assets/panel.html");
         let proxy = self.proxy.clone();
         let webview = match WebViewBuilder::new()
@@ -260,7 +261,11 @@ impl ApplicationHandler<UserEvent> for Pasteflow {
                     let _ = proxy.send_event(UserEvent::Ipc(event));
                 }
             })
-            .build(&window)
+            .with_bounds(wry::Rect {
+                position: wry::dpi::Position::Logical(wry::dpi::LogicalPosition::new(0.0, 0.0)),
+                size: wry::dpi::Size::Logical(wry::dpi::LogicalSize::new(900.0, 640.0)),
+            })
+            .build_as_child(&window)
         {
             Ok(wv) => wv,
             Err(e) => {
@@ -320,6 +325,20 @@ impl ApplicationHandler<UserEvent> for Pasteflow {
             }
             WindowEvent::Destroyed => {
                 event_loop.exit();
+            }
+            WindowEvent::Resized(size) => {
+                // Resize webview to match window size
+                if let Some(webview) = &self.webview {
+                    let _ = webview.set_bounds(wry::Rect {
+                        position: wry::dpi::Position::Logical(wry::dpi::LogicalPosition::new(
+                            0.0, 0.0,
+                        )),
+                        size: wry::dpi::Size::Physical(wry::dpi::PhysicalSize::new(
+                            size.width,
+                            size.height,
+                        )),
+                    });
+                }
             }
             _ => {}
         }
